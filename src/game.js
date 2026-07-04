@@ -1,42 +1,41 @@
+// --- CONSTANTS & DATA ---
+
 const WEAPONS = [
-    { id: 'ninja_star', name: 'Ninja Star', icon: '🥷', damage: 10, speed: 10, sharpness: 5, durability: 20, cost: 0 },
-    { id: 'double_star', name: 'Double Ninja Star', icon: '🌀', damage: 20, speed: 12, sharpness: 10, durability: 30, cost: 100 },
-    { id: 'throwing_knife', name: 'Throwing Knife', icon: '🗡️', damage: 30, speed: 15, sharpness: 20, durability: 40, cost: 300 },
-    { id: 'small_axe', name: 'Small Axe', icon: '🪓', damage: 50, speed: 8, sharpness: 15, durability: 60, cost: 600 },
-    { id: 'battle_axe', name: 'Battle Axe', icon: '⚒️', damage: 80, speed: 7, sharpness: 25, durability: 100, cost: 1200 },
-    { id: 'sword', name: 'Sword', icon: '🤺', damage: 60, speed: 12, sharpness: 40, durability: 80, cost: 2000 },
-    { id: 'samurai_sword', name: 'Samurai Sword', icon: '🗡️', damage: 90, speed: 14, sharpness: 60, durability: 120, cost: 3500 },
-    { id: 'katana', name: 'Katana', icon: '⚔️', damage: 120, speed: 16, sharpness: 80, durability: 150, cost: 6000 },
-    { id: 'golden_katana', name: 'Golden Katana', icon: '✨', damage: 200, speed: 18, sharpness: 100, durability: 250, cost: 12000 },
-    { id: 'shadow_katana', name: 'Shadow Katana', icon: '🌑', damage: 350, speed: 20, sharpness: 150, durability: 400, cost: 25000 }
+    { id: 'ninja_star', name: 'Ninja Star', icon: '🥷', damage: 10, power: 100, cost: 0, color: 0x888888, shape: 'star' },
+    { id: 'knife', name: 'Knife', icon: '🗡️', damage: 25, power: 150, cost: 50, color: 0xaaaaaa, shape: 'knife' },
+    { id: 'axe', name: 'Axe', icon: '🪓', damage: 50, power: 250, cost: 200, color: 0x555555, shape: 'axe' },
+    { id: 'sword', name: 'Sword', icon: '🤺', damage: 80, power: 400, cost: 500, color: 0xcccccc, shape: 'sword' },
+    { id: 'katana', name: 'Katana', icon: '⚔️', damage: 150, power: 600, cost: 1000, color: 0xffffff, shape: 'katana' }
 ];
 
 const MATERIALS = [
-    { name: 'Paper', icon: '📄', hp: 5, score: 10, coins: 1, color: '#eee' },
-    { name: 'Cardboard', icon: '📦', hp: 15, score: 20, coins: 2, color: '#cda975' },
-    { name: 'Plastic bottle', icon: '🍾', hp: 30, score: 35, coins: 4, color: '#88ccff' },
-    { name: 'Foam block', icon: '🧊', hp: 50, score: 50, coins: 6, color: '#aaffaa' },
-    { name: 'Thin wood', icon: '🪵', hp: 80, score: 75, coins: 10, color: '#d2b48c' },
-    { name: 'Thick wood', icon: '🪵', hp: 150, score: 120, coins: 15, color: '#8b4513' },
-    { name: 'Brick', icon: '🧱', hp: 250, score: 200, coins: 25, color: '#b22222' },
-    { name: 'Metal sheet', icon: '🪚', hp: 400, score: 350, coins: 40, color: '#aaaaaa' },
-    { name: 'Stone block', icon: '🪨', hp: 700, score: 600, coins: 70, color: '#555555' }
+    { name: 'Paper', hp: 20, color: 0xeeeeee, score: 10, coins: 1, shape: 'plane' },
+    { name: 'Plastic', hp: 50, color: 0x88ccff, score: 20, coins: 2, shape: 'cylinder' },
+    { name: 'Wood', hp: 120, color: 0x8b4513, score: 40, coins: 5, shape: 'box' },
+    { name: 'Brick', hp: 250, color: 0xb22222, score: 80, coins: 10, shape: 'box' },
+    { name: 'Metal', hp: 500, color: 0xaaaaaa, score: 150, coins: 20, shape: 'cylinder' },
+    { name: 'Stone', hp: 1000, color: 0x555555, score: 300, coins: 40, shape: 'dodecahedron' }
 ];
 
 const STATES = {
     START: 0,
-    SHOP: 1,
-    POWER_SELECT: 2,
-    PLAYING: 3,
-    GAMEOVER: 4
+    PLAYING: 1,
+    GAMEOVER: 2,
+    SHOP: 3
 };
 
-// Game State Variables
-let currentState = STATES.START;
-let canvas, ctx;
-let lastTime = 0;
+// --- GLOBAL VARIABLES ---
 
-// Player Data (Loaded from LocalStorage)
+let currentState = STATES.START;
+
+// Three.js
+let scene, camera, renderer;
+let lane, weaponMesh;
+let activeObjects = [];
+let particles = [];
+let clock = new THREE.Clock();
+
+// Game State
 let playerData = {
     coins: 0,
     unlockedWeapons: ['ninja_star'],
@@ -44,259 +43,281 @@ let playerData = {
     bestScore: 0
 };
 
+let run = {
+    score: 0,
+    coins: 0,
+    power: 0,
+    maxPower: 0,
+    speed: 40,
+    distanceTraveled: 0,
+    objectsBroken: 0
+};
+
+// --- INITIALIZATION ---
+
+function init() {
+    loadData();
+    initThreeJS();
+    initUI();
+    bindEvents();
+
+    // Start render loop
+    renderer.setAnimationLoop(gameLoop);
+}
+
 function loadData() {
-    const saved = localStorage.getItem('ninjaStarBreakerData');
+    const saved = localStorage.getItem('ninjaStarBreaker3D');
     if (saved) {
-        playerData = JSON.parse(saved);
-        // Ensure default array exists in case of old save formats
-        if (!playerData.unlockedWeapons) playerData.unlockedWeapons = ['ninja_star'];
-        if (!playerData.selectedWeaponId) playerData.selectedWeaponId = 'ninja_star';
+        try {
+            const parsed = JSON.parse(saved);
+            playerData = { ...playerData, ...parsed };
+        } catch (e) {
+            console.error("Failed to parse save data", e);
+        }
     }
 }
 
 function saveData() {
-    localStorage.setItem('ninjaStarBreakerData', JSON.stringify(playerData));
+    localStorage.setItem('ninjaStarBreaker3D', JSON.stringify(playerData));
 }
 
-// Run Data
-let run = {
-    score: 0,
-    coins: 0,
-    broken: 0,
-    powerMultiplier: 0,
-    combo: 0
-};
+function initThreeJS() {
+    const container = document.getElementById('game-container');
 
-// Particles and Objects
-let particles = [];
-let targetObjects = [];
-let weaponObj = null;
+    // Scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+    scene.fog = new THREE.Fog(0x050510, 20, 150);
 
-let cameraY = 0;
+    // Camera
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 0, -20);
 
-// Initialization function
-function init() {
-    canvas = document.getElementById('game-canvas');
-    ctx = canvas.getContext('2d');
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    loadData();
-    updateUI();
-    bindEvents();
-    requestAnimationFrame(gameLoop);
-}
+    // Renderer
+    const canvas = document.createElement('canvas');
+    canvas.id = 'game-canvas';
+    container.appendChild(canvas);
 
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-function drawBackground(deltaTime) {
-    // Simple scrolling starfield or abstract shapes
-    ctx.fillStyle = '#0d0d0d';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
 
-    // Draw some subtle grid lines tracking movement
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
-    ctx.lineWidth = 2;
-    const gridSize = 100;
-    const offsetY = cameraY % gridSize;
+    const dirLight = new THREE.DirectionalLight(0x00ffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
 
-    ctx.beginPath();
-    for (let x = 0; x <= canvas.width; x += gridSize) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-    }
-    for (let y = offsetY; y <= canvas.height; y += gridSize) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-    }
-    ctx.stroke();
-}
+    const dirLight2 = new THREE.DirectionalLight(0xff00ff, 0.5);
+    dirLight2.position.set(-10, 20, -10);
+    scene.add(dirLight2);
 
-function drawWeapon() {
-    if (!weaponObj || currentState < STATES.PLAYING) return;
-
-    ctx.save();
-    ctx.translate(weaponObj.x, weaponObj.y - cameraY);
-    ctx.rotate(weaponObj.rotation);
-
-    ctx.font = '50px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(weaponObj.icon, 0, 0);
-
-    // Draw glow
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = '#0ff';
-    ctx.fillText(weaponObj.icon, 0, 0);
-
-    ctx.restore();
-}
-
-function drawObjects() {
-    targetObjects.forEach(obj => {
-        const drawY = obj.y - cameraY;
-        // Optimization: don't draw offscreen objects
-        if (drawY > canvas.height + 100 || drawY < -100) return;
-
-        ctx.save();
-        ctx.translate(obj.x, drawY);
-
-        // Shake effect when hit
-        if (obj.hitTimer > 0) {
-            ctx.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
-            obj.hitTimer -= 16; // approx 1 frame
-        }
-
-        // Draw Health Bar
-        if (obj.hp < obj.maxHp) {
-            ctx.fillStyle = '#f00';
-            ctx.fillRect(-40, -40, 80, 5);
-            ctx.fillStyle = '#0f0';
-            const hpRatio = Math.max(0, obj.hp / obj.maxHp);
-            ctx.fillRect(-40, -40, 80 * hpRatio, 5);
-        }
-
-        ctx.font = '60px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(obj.icon, 0, 0);
-
-        // Draw object material color glow
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = obj.color;
-        ctx.fillText(obj.icon, 0, 0);
-
-        ctx.restore();
+    // Lane/Platform
+    const laneGeom = new THREE.PlaneGeometry(10, 1000);
+    const laneMat = new THREE.MeshStandardMaterial({
+        color: 0x111122,
+        roughness: 0.8,
+        metalness: 0.2
     });
+    lane = new THREE.Mesh(laneGeom, laneMat);
+    lane.rotation.x = -Math.PI / 2;
+    lane.position.y = 0;
+    lane.position.z = -400; // Extend far forward
+    scene.add(lane);
+
+    // Grid helper for ninja aesthetic
+    const grid = new THREE.GridHelper(20, 40, 0x00ffff, 0x003333);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    window.addEventListener('resize', onWindowResize);
 }
 
-function drawParticles(deltaTime) {
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx * deltaTime * 60;
-        p.y += p.vy * deltaTime * 60;
-        p.life -= deltaTime;
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
-        if (p.life <= 0) {
-            particles.splice(i, 1);
-            continue;
-        }
+// --- MODELS & SHAPES ---
 
-        ctx.save();
-        ctx.globalAlpha = p.life / p.maxLife;
-        ctx.translate(p.x, p.y - cameraY);
-        if (p.text) {
-            ctx.font = `${p.size}px Arial`;
-            ctx.fillStyle = p.color;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(p.text, 0, 0);
-        } else {
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(0, 0, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
+function createWeaponMesh(weaponData) {
+    if (weaponMesh) {
+        scene.remove(weaponMesh);
+        weaponMesh.geometry.dispose();
+        weaponMesh.material.dispose();
     }
+
+    let geometry;
+    const material = new THREE.MeshStandardMaterial({
+        color: weaponData.color,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+
+    switch(weaponData.shape) {
+        case 'star':
+            // Simple 4-point star using cylinder with 4 radial segments
+            geometry = new THREE.CylinderGeometry(0, 1, 0.2, 4);
+            break;
+        case 'knife':
+            geometry = new THREE.BoxGeometry(0.2, 2, 0.5);
+            break;
+        case 'axe':
+            geometry = new THREE.BoxGeometry(1.5, 0.2, 1);
+            break;
+        case 'sword':
+            geometry = new THREE.BoxGeometry(0.3, 3, 0.1);
+            break;
+        case 'katana':
+            geometry = new THREE.CylinderGeometry(0.1, 0.2, 4, 8);
+            break;
+        default:
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+    }
+
+    weaponMesh = new THREE.Mesh(geometry, material);
+    weaponMesh.position.set(0, 1.5, 0); // Start position
+    scene.add(weaponMesh);
+
+    return weaponMesh;
 }
 
-function updateUI() {
-    // Start Screen
+function createObjectMesh(materialData) {
+    let geometry;
+    const material = new THREE.MeshStandardMaterial({
+        color: materialData.color,
+        roughness: 0.6,
+        metalness: 0.1
+    });
+
+    const size = 1.5 + (materialData.hp / 200); // Scale up slightly based on hp
+
+    switch(materialData.shape) {
+        case 'plane':
+            geometry = new THREE.BoxGeometry(size, size, 0.1);
+            break;
+        case 'cylinder':
+            geometry = new THREE.CylinderGeometry(size/2, size/2, size, 16);
+            break;
+        case 'box':
+            geometry = new THREE.BoxGeometry(size, size, size);
+            break;
+        case 'dodecahedron':
+            geometry = new THREE.DodecahedronGeometry(size/1.5);
+            break;
+        default:
+            geometry = new THREE.BoxGeometry(size, size, size);
+    }
+
+    const mesh = new THREE.Mesh(geometry, material);
+    return mesh;
+}
+
+// --- UI & EVENTS ---
+
+function initUI() {
     document.getElementById('best-score-display').innerText = playerData.bestScore;
     document.getElementById('start-coins-display').innerText = playerData.coins;
 
-    // Shop Screen
-    document.getElementById('shop-coins').innerText = playerData.coins;
+    // Create weapons grid for shop
     renderShop();
-
-    // UI Game screen (updated during gameplay, but static info here)
-    const currentWeapon = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
-    document.getElementById('ui-weapon-name').innerText = currentWeapon.name;
 }
 
-function changeState(newState) {
-    currentState = newState;
+function bindEvents() {
+    document.getElementById('play-btn').addEventListener('click', startGame);
+    document.getElementById('retry-btn').addEventListener('click', startGame);
 
-    // Hide all screens
-    document.getElementById('start-screen').classList.add('hidden');
-    document.getElementById('game-ui').classList.add('hidden');
-    document.getElementById('shop-screen').classList.add('hidden');
-    document.getElementById('game-over-screen').classList.add('hidden');
-    document.getElementById('power-bar-container').classList.add('hidden');
+    document.getElementById('shop-btn-start').addEventListener('click', openShop);
+    document.getElementById('shop-btn-go').addEventListener('click', openShop);
+    document.getElementById('back-btn').addEventListener('click', closeShop);
+}
 
-    // Show appropriate screen
-    switch(newState) {
-        case STATES.START:
-            document.getElementById('start-screen').classList.remove('hidden');
-            updateUI();
-            break;
-        case STATES.SHOP:
-            document.getElementById('shop-screen').classList.remove('hidden');
-            updateUI();
-            break;
-        case STATES.POWER_SELECT:
-            document.getElementById('game-ui').classList.remove('hidden');
-            document.getElementById('power-bar-container').classList.remove('hidden');
-            startPowerSelection();
-            break;
-        case STATES.PLAYING:
-            document.getElementById('game-ui').classList.remove('hidden');
-            break;
-        case STATES.GAMEOVER:
-            document.getElementById('game-over-screen').classList.remove('hidden');
-            showGameOver();
-            break;
+function switchScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    if (screenId) {
+        document.getElementById(screenId).classList.remove('hidden');
     }
 }
 
-let powerBarValue = 0;
-let powerBarDir = 1;
+// --- GAME STATE FLOW ---
 
-function bindEvents() {
-    document.getElementById('play-btn').addEventListener('click', () => {
-        changeState(STATES.POWER_SELECT);
-    });
+function startGame() {
+    currentState = STATES.PLAYING;
+    switchScreen('game-ui');
 
-    document.getElementById('shop-btn-start').addEventListener('click', () => {
-        changeState(STATES.SHOP);
-    });
-
-    document.getElementById('shop-btn-go').addEventListener('click', () => {
-        changeState(STATES.SHOP);
-    });
-
-    document.getElementById('back-btn').addEventListener('click', () => {
-        changeState(STATES.START);
-    });
-
-    document.getElementById('retry-btn').addEventListener('click', () => {
-        changeState(STATES.POWER_SELECT);
-    });
-
-    // Handle throwing
-    const handleThrow = (e) => {
-        if (e.target.tagName === 'BUTTON') return; // Ignore button clicks
-
-        if (currentState === STATES.POWER_SELECT) {
-            throwWeapon();
-        }
+    // Reset Run
+    run = {
+        score: 0,
+        coins: 0,
+        distanceTraveled: 0,
+        objectsBroken: 0,
+        speed: 40 // Fix NaN issue
     };
 
-    window.addEventListener('mousedown', handleThrow);
-    window.addEventListener('touchstart', handleThrow, {passive: false});
-    window.addEventListener('keydown', (e) => {
-        if (e.code === 'Space') {
-            handleThrow(e);
-        }
-    });
+    // Get Selected Weapon
+    const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
+    run.power = weaponData.power;
+    run.maxPower = weaponData.power;
+
+    document.getElementById('ui-score').innerText = '0';
+    document.getElementById('ui-coins').innerText = '0';
+    document.getElementById('ui-weapon-name').innerText = weaponData.name;
+    document.getElementById('ui-object').innerText = 'None';
+
+    // Setup Scene
+    createWeaponMesh(weaponData);
+    weaponMesh.position.set(0, 1.5, 0);
+    camera.position.set(0, 5, 10);
+
+    // Clear old objects
+    activeObjects.forEach(obj => scene.remove(obj.mesh));
+    activeObjects = [];
+
+    // Spawn initial objects
+    spawnObject(-30);
+    spawnObject(-60);
+    spawnObject(-90);
+}
+
+function gameOver() {
+    currentState = STATES.GAMEOVER;
+    switchScreen('game-over-screen');
+
+    document.getElementById('go-score').innerText = run.score;
+    document.getElementById('go-coins').innerText = run.coins;
+
+    playerData.coins += run.coins;
+    if (run.score > playerData.bestScore) {
+        playerData.bestScore = run.score;
+    }
+
+    saveData();
+
+    document.getElementById('best-score-display').innerText = playerData.bestScore;
+    document.getElementById('start-coins-display').innerText = playerData.coins;
+}
+
+// --- SHOP ---
+
+function openShop() {
+    currentState = STATES.SHOP;
+    switchScreen('shop-screen');
+    renderShop();
+}
+
+function closeShop() {
+    currentState = STATES.START;
+    switchScreen('start-screen');
 }
 
 function renderShop() {
     const grid = document.getElementById('weapons-grid');
     grid.innerHTML = '';
+    document.getElementById('shop-coins').innerText = playerData.coins;
 
     WEAPONS.forEach(w => {
         const isUnlocked = playerData.unlockedWeapons.includes(w.id);
@@ -310,9 +331,7 @@ function renderShop() {
             <div class="weapon-name">${w.name}</div>
             <div class="weapon-stats">
                 DMG: ${w.damage}<br>
-                SPD: ${w.speed}<br>
-                SHP: ${w.sharpness}<br>
-                DUR: ${w.durability}
+                PWR: ${w.power}
             </div>
         `;
 
@@ -326,7 +345,7 @@ function renderShop() {
             btn.onclick = () => {
                 playerData.selectedWeaponId = w.id;
                 saveData();
-                updateUI();
+                renderShop(); // Refresh
             };
         } else {
             btn.className = 'weapon-action-btn btn-buy';
@@ -339,7 +358,7 @@ function renderShop() {
                     playerData.unlockedWeapons.push(w.id);
                     playerData.selectedWeaponId = w.id;
                     saveData();
-                    updateUI();
+                    renderShop(); // Refresh
                 };
             }
         }
@@ -349,256 +368,192 @@ function renderShop() {
     });
 }
 
-function startPowerSelection() {
-    // Reset Run
-    run = {
-        score: 0,
-        coins: 0,
-        broken: 0,
-        powerMultiplier: 0,
-        combo: 0
-    };
+// --- GAMEPLAY MECHANICS ---
 
-    // Reset UI
-    document.getElementById('ui-score').innerText = '0';
-    document.getElementById('ui-coins').innerText = '0';
-    document.getElementById('ui-broken').innerText = '0';
-    document.getElementById('combo-display').classList.add('hidden');
-    document.getElementById('perfect-cut-display').classList.add('hidden');
+function spawnObject(zPos) {
+    // Difficulty curve
+    let maxMaterialIndex = Math.min(MATERIALS.length - 1, Math.floor(run.objectsBroken / 3) + 1);
 
-    powerBarValue = 0;
-    powerBarDir = 1;
-
-    // Setup weapon at start position
-    const selectedWeapon = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
-    document.getElementById('ui-weapon-name').innerText = selectedWeapon.name;
-
-    weaponObj = {
-        ...selectedWeapon,
-        x: canvas.width / 2,
-        y: canvas.height * 0.8,
-        rotation: 0,
-        vy: 0,
-        spin: 0,
-        energy: selectedWeapon.durability
-    };
-
-    cameraY = 0;
-    particles = [];
-    targetObjects = [];
-
-    // Spawn initial objects
-    let yPos = weaponObj.y - 300;
-    for(let i=0; i<3; i++) {
-        spawnObject(yPos);
-        yPos -= (300 + Math.random() * 200);
-    }
-}
-
-function updatePowerBar(deltaTime) {
-    powerBarValue += powerBarDir * deltaTime * 150;
-    if (powerBarValue > 100) {
-        powerBarValue = 100;
-        powerBarDir = -1;
-    } else if (powerBarValue < 0) {
-        powerBarValue = 0;
-        powerBarDir = 1;
-    }
-
-    document.getElementById('power-bar-fill').style.width = `${powerBarValue}%`;
-}
-
-function throwWeapon() {
-    document.getElementById('power-bar-container').classList.add('hidden');
-
-    // Calculate power based on how close to 80-90% sweet spot
-    const sweetSpot = 85;
-    const diff = Math.abs(powerBarValue - sweetSpot);
-    // Multiplier between 0.5 (bad) and 1.5 (perfect)
-    run.powerMultiplier = Math.max(0.5, 1.5 - (diff * 0.02));
-
-    weaponObj.vy = weaponObj.speed * run.powerMultiplier;
-    weaponObj.spin = weaponObj.speed * 0.5 * run.powerMultiplier;
-    weaponObj.energy = weaponObj.durability * run.powerMultiplier;
-
-    changeState(STATES.PLAYING);
-}
-
-function showGameOver() {
-    document.getElementById('go-score').innerText = run.score;
-    document.getElementById('go-broken').innerText = run.broken;
-    document.getElementById('go-coins').innerText = run.coins;
-
-    playerData.coins += run.coins;
-    if (run.score > playerData.bestScore) {
-        playerData.bestScore = run.score;
-    }
-
-    saveData();
-}
-function gameLoop(timestamp) {
-    const deltaTime = (timestamp - lastTime) / 1000;
-    lastTime = timestamp;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    drawBackground(deltaTime);
-
-    if (currentState === STATES.POWER_SELECT) {
-        updatePowerBar(deltaTime);
-    } else if (currentState === STATES.PLAYING) {
-        updatePhysics(deltaTime);
-    }
-
-    drawObjects();
-    drawWeapon();
-    drawParticles(deltaTime);
-
-    requestAnimationFrame(gameLoop);
-}
-
-function spawnObject(yPos) {
-    // Difficulty curve based on objects broken
-    let maxMaterialIndex = Math.min(MATERIALS.length - 1, Math.floor(run.broken / 3) + 1);
-
-    // Slight randomness, but mostly progressive
     let matIndex = Math.floor(Math.random() * maxMaterialIndex);
-    // Bias towards harder materials as we progress
     if (Math.random() > 0.5) matIndex = maxMaterialIndex - 1;
     if (matIndex < 0) matIndex = 0;
 
     const mat = MATERIALS[matIndex];
-    targetObjects.push({
-        ...mat,
-        maxHp: mat.hp,
-        x: canvas.width / 2,
-        y: yPos,
-        hitTimer: 0
+    const mesh = createObjectMesh(mat);
+    mesh.position.set(0, 1.5, zPos);
+    scene.add(mesh);
+
+    activeObjects.push({
+        data: mat,
+        mesh: mesh,
+        hp: mat.hp,
+        z: zPos
     });
 }
 
-function createBreakParticles(x, y, color) {
-    for (let i = 0; i < 15; i++) {
+function createBreakParticles(position, color) {
+    const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const material = new THREE.MeshBasicMaterial({ color: color });
+
+    for (let i = 0; i < 20; i++) {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+        mesh.position.x += (Math.random() - 0.5) * 2;
+        mesh.position.y += (Math.random() - 0.5) * 2;
+        scene.add(mesh);
+
         particles.push({
-            x: x,
-            y: y,
-            vx: (Math.random() - 0.5) * 10,
-            vy: (Math.random() - 0.5) * 10,
-            life: 0.5 + Math.random() * 0.5,
-            maxLife: 1,
-            size: Math.random() * 8 + 4,
-            color: color
+            mesh: mesh,
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 15,
+                Math.random() * 15,
+                (Math.random() - 0.5) * 15
+            ),
+            life: 1.0
         });
     }
 }
 
-function updatePhysics(deltaTime) {
-    if (!weaponObj || weaponObj.energy <= 0) return;
+// Camera Shake
+let shakeTime = 0;
+let shakeMagnitude = 0;
 
-    // Move weapon
-    weaponObj.y -= weaponObj.vy * deltaTime * 60;
-    weaponObj.rotation += weaponObj.spin * deltaTime * 60;
+function applyCameraShake(magnitude, time) {
+    shakeMagnitude = magnitude;
+    shakeTime = time;
+}
 
-    // Update camera to follow weapon (keep weapon near bottom of screen)
-    const targetCameraY = weaponObj.y - (canvas.height * 0.7);
-    cameraY += (targetCameraY - cameraY) * 0.1; // Smooth follow
+// --- MAIN LOOP ---
 
-    // Collision detection
-    // Only check the object at the bottom of the list (closest to weapon)
-    if (targetObjects.length > 0) {
-        let target = targetObjects[0];
+function gameLoop() {
+    const delta = clock.getDelta();
+
+    if (currentState === STATES.PLAYING) {
+        updateGameplay(delta);
+    }
+
+    // Update Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.life -= delta;
+
+        if (p.life <= 0) {
+            scene.remove(p.mesh);
+            p.mesh.geometry.dispose();
+            p.mesh.material.dispose();
+            particles.splice(i, 1);
+        } else {
+            p.mesh.position.addScaledVector(p.velocity, delta);
+            p.velocity.y -= 20 * delta; // Gravity
+            p.mesh.rotation.x += delta * 10;
+            p.mesh.rotation.y += delta * 10;
+            p.mesh.scale.setScalar(p.life);
+        }
+    }
+
+    // Apply Camera Shake
+    if (shakeTime > 0) {
+        shakeTime -= delta;
+        const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * shakeMagnitude,
+            (Math.random() - 0.5) * shakeMagnitude,
+            0
+        );
+        camera.position.add(offset);
+        // Will be roughly reset by follow logic in updateGameplay
+    }
+
+    renderer.render(scene, camera);
+}
+
+function updateGameplay(delta) {
+    if (run.power <= 0) {
+        gameOver();
+        return;
+    }
+
+    // Move Weapon normally unless colliding
+    let isColliding = false;
+
+    // Check Collisions
+    if (activeObjects.length > 0) {
+        let target = activeObjects[0];
+
+        // Update UI
+        document.getElementById('ui-object').innerText = target.data.name;
 
         // If weapon reached the target
-        if (weaponObj.y <= target.y + 40) { // 40 is roughly hit radius
+        if (weaponMesh.position.z <= target.z + 1.5 && weaponMesh.position.z >= target.z - 1.5) { // 1.5 rough collision radius
+            isColliding = true;
+            // Lock weapon position at the object
+            weaponMesh.position.z = target.z + 1.5;
 
-            // Apply damage based on sharpness and energy
-            const damage = weaponObj.damage * weaponObj.sharpness * 0.1 * run.powerMultiplier;
-            target.hp -= damage * deltaTime * 60;
-            target.hitTimer = 50;
+            // Get weapon data
+            const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
 
-            // Lose energy/durability while cutting
-            weaponObj.energy -= (target.maxHp * 0.05) * deltaTime * 60;
+            // Apply Damage
+            const damagePerSec = weaponData.damage * 10;
+            target.hp -= damagePerSec * delta;
 
-            // Create sparks while cutting
-            if (Math.random() > 0.5) {
-                particles.push({
-                    x: weaponObj.x + (Math.random() - 0.5) * 40,
-                    y: weaponObj.y,
-                    vx: (Math.random() - 0.5) * 5,
-                    vy: Math.random() * 5,
-                    life: 0.3,
-                    maxLife: 0.3,
-                    size: 3,
-                    color: '#ff0'
-                });
-            }
+            // Reduce Power
+            const drainRate = target.data.hp * 0.5; // Drain faster on hard objects
+            run.power -= drainRate * delta;
+
+            // Visual feedback: Shake object
+            target.mesh.position.x = (Math.random() - 0.5) * 0.5;
+            applyCameraShake(0.2, 0.05);
 
             if (target.hp <= 0) {
-                // Object Broken!
-                createBreakParticles(target.x, target.y, target.color);
+                // Object Broken
+                createBreakParticles(target.mesh.position, target.data.color);
+                applyCameraShake(0.5, 0.2);
 
-                run.score += target.score;
-                run.coins += target.coins;
-                run.broken++;
-                run.combo++;
+                run.score += target.data.score;
+                run.coins += target.data.coins;
+                run.objectsBroken++;
 
-                // Show floating text
-                particles.push({
-                    x: target.x,
-                    y: target.y,
-                    vx: 0,
-                    vy: -2,
-                    life: 1,
-                    maxLife: 1,
-                    size: 30,
-                    color: '#0f0',
-                    text: `+${target.score}`
-                });
-
-                // Update UI visually
                 document.getElementById('ui-score').innerText = run.score;
                 document.getElementById('ui-coins').innerText = run.coins;
-                document.getElementById('ui-broken').innerText = run.broken;
 
-                if (run.combo > 1) {
-                    const comboEl = document.getElementById('combo-display');
-                    document.getElementById('ui-combo').innerText = run.combo;
-                    comboEl.classList.remove('hidden');
-                    // Reset animation
-                    comboEl.style.animation = 'none';
-                    comboEl.offsetHeight; // trigger reflow
-                    comboEl.style.animation = null;
-                }
+                scene.remove(target.mesh);
+                target.mesh.geometry.dispose();
+                target.mesh.material.dispose();
+                activeObjects.shift();
 
-                if (run.combo >= 5) {
-                     const perfectEl = document.getElementById('perfect-cut-display');
-                     perfectEl.classList.remove('hidden');
-                     perfectEl.style.animation = 'none';
-                     perfectEl.offsetHeight;
-                     perfectEl.style.animation = null;
-                }
+                isColliding = false; // allow to move again
 
-                // Remove object and spawn a new one further up
-                targetObjects.shift();
-
-                // Spawn 1 or 2 new objects to keep the path populated
-                const lastObjY = targetObjects.length > 0 ? targetObjects[targetObjects.length - 1].y : weaponObj.y;
-                spawnObject(lastObjY - (300 + Math.random() * 200));
-
-            } else if (weaponObj.energy <= 0) {
-                // Weapon stopped without breaking object
-                weaponObj.energy = 0;
-                weaponObj.vy = 0;
-
-                // Small bounce back
-                weaponObj.y += 20;
-
-                setTimeout(() => {
-                    changeState(STATES.GAMEOVER);
-                }, 1000);
+                // Spawn new object further down
+                const lastZ = activeObjects.length > 0 ? activeObjects[activeObjects.length - 1].z : weaponMesh.position.z;
+                spawnObject(lastZ - (30 + Math.random() * 30));
+            } else if (run.power <= 0) {
+                // Out of power while hitting
+                run.power = 0;
             }
         }
     }
+
+    if (!isColliding) {
+        weaponMesh.position.z -= run.speed * delta;
+    }
+
+    weaponMesh.rotation.z += run.speed * 0.5 * delta;
+    weaponMesh.rotation.x += run.speed * 0.2 * delta;
+
+    // Camera Follow
+    const targetCameraZ = weaponMesh.position.z + 10;
+    camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
+    camera.position.y = 5;
+    camera.position.x = 0;
+
+    // Extend Lane
+    if (weaponMesh.position.z < lane.position.z) {
+        lane.position.z -= 400; // 400 is less than half of 1000, so it should overlap seamlessly
+    }
+
+    // Update UI Power Bar
+    const powerPercent = Math.max(0, (run.power / run.maxPower) * 100);
+    document.getElementById('power-bar-fill').style.width = `${powerPercent}%`;
 }
 
+// Start everything when DOM is ready
 window.onload = init;
