@@ -11,7 +11,7 @@
 body, html {
     width: 100%;
     height: 100%;
-    background-color: #0d0d0d;
+    background-color: #000;
     overflow: hidden;
     color: #fff;
 }
@@ -24,7 +24,6 @@ body, html {
     display: flex;
     justify-content: center;
     align-items: center;
-    background: radial-gradient(circle at center, #1a1a2e 0%, #0d0d0d 100%);
 }
 
 canvas {
@@ -48,7 +47,7 @@ canvas {
     justify-content: center;
     align-items: center;
     z-index: 10;
-    background-color: rgba(13, 13, 13, 0.85);
+    background-color: rgba(0, 0, 0, 0.7);
     padding: 20px;
     text-align: center;
 }
@@ -61,7 +60,7 @@ canvas {
 .neon-title {
     font-size: 3rem;
     color: #fff;
-    text-shadow: 0 0 10px #0ff, 0 0 20px #0ff, 0 0 40px #0ff;
+    text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
     margin-bottom: 20px;
     font-weight: bold;
     text-transform: uppercase;
@@ -73,7 +72,7 @@ canvas {
 }
 
 .neon-title.text-danger {
-    text-shadow: 0 0 10px #f00, 0 0 20px #f00, 0 0 40px #f00;
+    text-shadow: 0 0 10px #f00, 0 0 20px #f00;
 }
 
 .tutorial-text {
@@ -184,36 +183,8 @@ canvas {
 
 #power-bar-fill {
     height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #0f0, #ff0, #f00);
-}
-
-#power-bar-target {
-    position: absolute;
-    top: 0;
-    left: 80%;
-    width: 10%;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.5);
-    border-left: 2px solid #fff;
-    border-right: 2px solid #fff;
-}
-
-/* Alerts */
-#combo-display, #perfect-cut-display {
-    position: absolute;
-    top: 40%;
-    font-size: 2rem;
-    font-weight: bold;
-    color: #ff0;
-    text-shadow: 0 0 10px #ff0;
-    animation: pop 0.5s ease-out forwards;
-}
-
-@keyframes pop {
-    0% { transform: scale(0.5); opacity: 1; }
-    50% { transform: scale(1.5); opacity: 1; }
-    100% { transform: scale(1); opacity: 0; }
+    width: 100%; /* Will be updated dynamically */
+    background: linear-gradient(90deg, #f00, #ff0, #0f0);
 }
 
 /* Shop */
@@ -221,6 +192,7 @@ canvas {
     justify-content: flex-start;
     padding-top: 40px;
     overflow-y: auto;
+    pointer-events: auto;
 }
 
 .coins-display {
