@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ninja Star Breaker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Game Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="neon-title">Ninja Star Breaker</h1>
+            <p class="tutorial-text">Throw your weapon. Break objects. Earn coins. Unlock stronger ninja weapons.</p>
+            <div class="stats-container">
+                <p>Best Score: <span id="best-score-display">0</span></p>
+                <p>Coins: <span id="start-coins-display">0</span></p>
+            </div>
+            <button id="play-btn" class="neon-button">Play</button>
+            <button id="shop-btn-start" class="neon-button secondary">Upgrade Shop</button>
+        </div>
+
+        <!-- Game UI Overlay (Visible during gameplay) -->
+        <div id="game-ui" class="screen hidden">
+            <div class="top-bar">
+                <div class="stat-box">Score: <span id="ui-score">0</span></div>
+                <div class="stat-box">Coins: <span id="ui-coins">0</span></div>
+                <div class="stat-box">Broken: <span id="ui-broken">0</span></div>
+            </div>
+            <div class="weapon-info">
+                Weapon: <span id="ui-weapon-name">Ninja Star</span>
+            </div>
+            <div id="power-bar-container" class="hidden">
+                <div id="power-bar-fill"></div>
+                <div id="power-bar-target"></div>
+            </div>
+            <div id="combo-display" class="hidden">Combo x<span id="ui-combo">1</span>!</div>
+            <div id="perfect-cut-display" class="hidden">Perfect Cut!</div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen hidden">
+            <h1 class="neon-title small">Upgrade Shop</h1>
+            <p class="coins-display">Coins: <span id="shop-coins">0</span></p>
+            <div class="weapons-grid" id="weapons-grid">
+                <!-- Weapon items will be injected here via JS -->
+            </div>
+            <button id="back-btn" class="neon-button secondary">Back</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen hidden">
+            <h1 class="neon-title text-danger">Run Ended</h1>
+            <div class="stats-container large">
+                <p>Score: <span id="go-score">0</span></p>
+                <p>Objects Broken: <span id="go-broken">0</span></p>
+                <p>Coins Earned: <span id="go-coins">0</span></p>
+            </div>
+            <button id="retry-btn" class="neon-button">Retry</button>
+            <button id="shop-btn-go" class="neon-button secondary">Upgrade Shop</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
