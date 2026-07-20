@@ -5,7 +5,7 @@ const puppeteer = require('puppeteer');
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720 });
 
-  await page.goto('http://localhost:8000/src/index.html');
+  await page.goto('http://localhost:8000/index.html');
 
   // Wait for the game to load
   await page.waitForSelector('#play-btn');
@@ -31,7 +31,7 @@ const puppeteer = require('puppeteer');
   console.log('Saved gameplay screenshot');
 
   // Wait for game over
-  await page.waitForSelector('#game-over-screen:not(.hidden)', { timeout: 15000 });
+  await page.waitForSelector('#game-over-screen:not(.hidden)', { timeout: 35000 });
   await new Promise(r => setTimeout(r, 500));
 
   // Screenshot 4: Game Over

@@ -71,6 +71,14 @@ canvas {
     font-size: 2rem;
 }
 
+#version-label {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    font-size: 0.8rem;
+    color: #555;
+}
+
 .neon-title.text-danger {
     text-shadow: 0 0 10px #f00, 0 0 20px #f00;
 }
@@ -151,6 +159,7 @@ canvas {
     border-radius: 10px;
     box-shadow: 0 0 10px #0ff;
     margin-bottom: 10px;
+    z-index: 20;
 }
 
 .stat-box {
@@ -159,32 +168,139 @@ canvas {
     text-shadow: 0 0 5px #0ff;
 }
 
-.weapon-info {
+.game-controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 20;
+    pointer-events: auto;
+}
+
+.hud-btn {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #0ff;
+    color: #fff;
     font-size: 1.5rem;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 0 5px #0ff;
+}
+
+.hud-btn:hover {
+    background: rgba(0, 255, 255, 0.3);
+}
+
+.weapon-info {
+    font-size: 1.2rem;
     color: #f0f;
     text-shadow: 0 0 5px #f0f;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
+    text-align: center;
 }
 
 /* Power Bar */
 #power-bar-container {
     position: absolute;
-    bottom: 50px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     width: 80%;
     max-width: 400px;
-    height: 30px;
-    border: 2px solid #fff;
-    border-radius: 15px;
-    background: rgba(0, 0, 0, 0.5);
-    overflow: hidden;
+    z-index: 20;
 }
 
 #power-bar-fill {
-    height: 100%;
-    width: 100%; /* Will be updated dynamically */
+    height: 15px;
+    width: 100%;
     background: linear-gradient(90deg, #f00, #ff0, #0f0);
+    border: 2px solid #fff;
+    border-radius: 7px;
+    box-shadow: 0 0 10px #0f0;
+}
+
+.crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 2rem;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#mobile-control-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5; /* Below buttons, above canvas */
+    pointer-events: auto;
+}
+
+/* Floating Effects */
+#floating-text-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 30;
+}
+
+.floating-text {
+    position: absolute;
+    color: #fff;
+    font-weight: bold;
+    font-size: 1.5rem;
+    pointer-events: none;
+    animation: floatUp 1s ease-out forwards;
+}
+
+.floating-text.score { color: #0f0; text-shadow: 0 0 5px #0f0; }
+.floating-text.coin { color: #ff0; text-shadow: 0 0 5px #ff0; }
+.floating-text.damage { color: #f00; text-shadow: 0 0 5px #f00; }
+
+@keyframes floatUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
+}
+
+#combo-display {
+    position: absolute;
+    top: 30%;
+    font-size: 3rem;
+    color: #ff0;
+    text-shadow: 0 0 15px #ff0, 0 0 30px #f80;
+    font-weight: bold;
+    animation: pulse 0.5s infinite alternate;
+    z-index: 20;
+}
+
+#boss-warning {
+    position: absolute;
+    top: 40%;
+    font-size: 4rem;
+    color: #f00;
+    text-shadow: 0 0 20px #f00, 0 0 40px #f00;
+    font-weight: bold;
+    animation: pulseFlash 0.3s infinite alternate;
+    z-index: 20;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.2); }
+}
+
+@keyframes pulseFlash {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.1); opacity: 1; color: #fff;}
 }
 
 /* Shop */
