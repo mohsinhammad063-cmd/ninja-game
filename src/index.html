@@ -12,6 +12,7 @@
         <!-- Start Screen -->
         <div id="start-screen" class="screen">
             <h1 class="neon-title">Ninja Star Breaker 3D</h1>
+            <div id="version-label">v5.0 3D Fun Shop Update</div>
             <p class="tutorial-text">Throw your weapon. Break objects. Earn coins. Unlock stronger ninja weapons.</p>
             <div class="stats-container">
                 <p>Best Score: <span id="best-score-display">0</span></p>
@@ -24,16 +25,37 @@
         <!-- Game UI Overlay (Visible during gameplay) -->
         <div id="game-ui" class="screen hidden">
             <div class="top-bar">
+                <div class="stat-box">Wave: <span id="ui-wave">1</span></div>
                 <div class="stat-box">Score: <span id="ui-score">0</span></div>
                 <div class="stat-box">Coins: <span id="ui-coins">0</span></div>
-                <div class="stat-box">Current Object: <span id="ui-object">None</span></div>
             </div>
-            <div class="weapon-info">
-                Weapon: <span id="ui-weapon-name">Ninja Star</span>
+
+            <div class="game-controls">
+                <button id="pause-btn" class="hud-btn">⏸️</button>
+                <button id="restart-btn" class="hud-btn">🔄</button>
             </div>
+
+            <div id="combo-display" class="hidden">Combo x<span id="ui-combo">2</span>!</div>
+            <div id="boss-warning" class="hidden">BOSS WAVE!</div>
+            <div id="floating-text-container"></div>
+
+            <div class="crosshair">+</div>
+
             <div id="power-bar-container">
+                <div class="weapon-info">
+                    <span id="ui-weapon-name">Ninja Star</span>
+                </div>
                 <div id="power-bar-fill"></div>
             </div>
+
+            <div id="mobile-control-area"></div>
+        </div>
+
+        <!-- Pause Screen -->
+        <div id="pause-screen" class="screen hidden">
+            <h1 class="neon-title">PAUSED</h1>
+            <button id="resume-btn" class="neon-button">Resume</button>
+            <button id="quit-btn" class="neon-button secondary">Quit</button>
         </div>
 
         <!-- Shop Screen -->
