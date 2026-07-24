@@ -1,101 +1,11 @@
-// --- CONSTANTS & DATA ---
-
-const WEAPONS = [
-    { id: 'ninja_star', name: 'Basic Shuriken', icon: '🥷', damage: 10, power: 100, cost: 0, color: 0x4444ff, shape: 'star', trail: 'blue' },
-    { id: 'steel_star', name: 'Steel Shuriken', icon: '⚙️', damage: 25, power: 150, cost: 50, color: 0xaaaaaa, shape: 'star', trail: 'silver' },
-    { id: 'fire_star', name: 'Fire Shuriken', icon: '🔥', damage: 50, power: 250, cost: 200, color: 0xff4400, shape: 'star', trail: 'orange' },
-    { id: 'lightning_star', name: 'Lightning Shuriken', icon: '⚡', damage: 80, power: 400, cost: 500, color: 0x00ffff, shape: 'star', trail: 'cyan' },
-    { id: 'shadow_blade', name: 'Shadow Blade', icon: '🌑', damage: 150, power: 600, cost: 1000, color: 0x8800ff, shape: 'katana', trail: 'purple' }
-];
-
-const MATERIALS = [
-    { name: 'Wooden Crate', hp: 30, color: 0x8b4513, score: 10, coins: 1, shape: 'box' },
-    { name: 'Barrel', hp: 60, color: 0x5c4033, score: 20, coins: 2, shape: 'cylinder' },
-    { name: 'Stone Block', hp: 150, color: 0x888888, score: 40, coins: 5, shape: 'box' },
-    { name: 'Target Dummy', hp: 300, color: 0xddaa77, score: 80, coins: 10, shape: 'cylinder' },
-    { name: 'Crystal Block', hp: 600, color: 0x00ffff, score: 150, coins: 20, shape: 'dodecahedron' },
-    { name: 'BOSS', hp: 2000, color: 0xff0000, score: 500, coins: 50, shape: 'boss' }
-];
-
-const POWERUPS = [
-    { type: 'coin', name: 'Golden Crate', color: 0xffd700, shape: 'box' },
-    { type: 'damage', name: 'Red Target', color: 0xff0000, shape: 'cylinder' },
-    { type: 'slow', name: 'Blue Target', color: 0x0000ff, shape: 'cylinder' }
-];
-
-const STATES = {
-    START: 0,
-    PLAYING: 1,
-    GAMEOVER: 2,
-    SHOP: 3
-};
-
-// --- AUDIO SYSTEM (Web Audio API) ---
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playSound(type) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    const now = audioCtx.currentTime;
-
-    switch(type) {
-        case 'throw':
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(800, now);
-            osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
-            gainNode.gain.setValueAtTime(0.3, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-            break;
-        case 'hit':
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
-            gainNode.gain.setValueAtTime(0.2, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-            osc.start(now);
-            osc.stop(now + 0.05);
-            break;
-        case 'break':
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(100, now);
-            osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
-            gainNode.gain.setValueAtTime(0.5, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-            osc.start(now);
-            osc.stop(now + 0.2);
-            break;
-        case 'coin':
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(1200, now);
-            osc.frequency.setValueAtTime(1500, now + 0.05);
-            gainNode.gain.setValueAtTime(0.3, now);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
-            break;
-        case 'buy':
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(400, now);
-            osc.frequency.setValueAtTime(600, now + 0.1);
-            osc.frequency.setValueAtTime(800, now + 0.2);
-            gainNode.gain.setValueAtTime(0.3, now);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.4);
-            osc.start(now);
-            osc.stop(now + 0.4);
-            break;
-    }
-}
+import { initScene } from './SceneManager.js';
+import { updateUIDisplay, renderShop, switchScreen, handleStateChangeUI, showRestartConfirmMenu, showQuitConfirmMenu, resetPauseMenuUI } from './UIManager.js';
+import { createRun, resetGameUI, handleGameOver, safelyClearRun } from './GameManager.js';
+import { WEAPONS, MATERIALS, POWERUPS, STATES } from './constants.js';
+import { playSound } from './audio.js';
+import { stateManager } from './StateManager.js';
 
 // --- GLOBAL VARIABLES ---
-
-let currentState = STATES.START;
 
 // Three.js
 let scene, camera, renderer;
@@ -110,39 +20,116 @@ let aim = { x: 0, y: 0 }; // Normalized device coordinates (-1 to +1)
 let isDragging = false;
 
 // Game State
+let run = {};
 let playerData = {
     coins: 0,
+    bestScore: 0,
     unlockedWeapons: ['ninja_star'],
     selectedWeaponId: 'ninja_star',
-    bestScore: 0
+    settings: {
+        shake: true,
+        move: true
+    }
 };
-
-let run = {
-    score: 0,
-    coins: 0,
-    power: 0,
-    maxPower: 0,
-    speed: 40,
-    distanceTraveled: 0,
-    objectsBroken: 0,
-    wave: 1,
-    combo: 0,
-    comboTimer: 0,
-    damageMultiplier: 1,
-    speedMultiplier: 1,
-    powerupTimer: 0
-};
-
-// --- INITIALIZATION ---
 
 function init() {
     loadData();
-    initThreeJS();
-    initUI();
+    stateManager.subscribe((newState) => {
+        handleStateChangeUI(newState, switchScreen);
+    });
+    const sceneData = initScene();
+    scene = sceneData.scene;
+    camera = sceneData.camera;
+    renderer = sceneData.renderer;
+    lane = sceneData.lane;
+
+    updateUIDisplay(playerData);
+    renderShop(playerData, window.selectWeapon, window.buyWeapon);
     bindEvents();
 
     // Start render loop
     renderer.setAnimationLoop(gameLoop);
+}
+
+function bindEvents() {
+    document.getElementById('play-btn').addEventListener('click', startGame);
+    document.getElementById('retry-btn').addEventListener('click', startGame);
+
+    document.getElementById('shop-btn-start').addEventListener('click', openShop);
+    document.getElementById('shop-btn-go').addEventListener('click', openShop);
+    document.getElementById('back-btn').addEventListener('click', closeShop);
+
+    // In-game buttons
+    document.getElementById('pause-btn').addEventListener('click', togglePause);
+    document.getElementById('resume-btn').addEventListener('click', togglePause);
+
+    // Pause menu confirmation bindings
+    document.getElementById('confirm-restart-btn').addEventListener('click', showRestartConfirmMenu);
+    document.getElementById('cancel-restart-btn').addEventListener('click', resetPauseMenuUI);
+
+    document.getElementById('do-restart-btn').addEventListener('click', () => {
+        safelyClearRun(scene, activeObjects, projectiles, particles);
+        activeObjects = [];
+        projectiles = [];
+        particles = [];
+        startGame();
+    });
+
+    document.getElementById('confirm-quit-btn').addEventListener('click', showQuitConfirmMenu);
+    document.getElementById('cancel-quit-btn').addEventListener('click', resetPauseMenuUI);
+    document.getElementById('do-quit-btn').addEventListener('click', () => {
+        safelyClearRun(scene, activeObjects, projectiles, particles);
+        activeObjects = [];
+        projectiles = [];
+        particles = [];
+        stateManager.changeState(STATES.START);
+    });
+
+    // Keyboard Pause Controls
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key.toLowerCase() === 'p') {
+            togglePause();
+        }
+    });
+
+    // Auto-pause when tab is hidden
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && stateManager.getState() === STATES.PLAYING) {
+            stateManager.changeState(STATES.PAUSED);
+        }
+    });
+
+    // Touch / Mouse Aiming
+    const touchArea = document.getElementById('mobile-control-area');
+
+    touchArea.addEventListener('pointerdown', (e) => {
+        if(stateManager.getState() !== STATES.PLAYING) return;
+        isDragging = true;
+        updateAim(e);
+        throwProjectile();
+    });
+
+    touchArea.addEventListener('pointermove', (e) => {
+        if(!isDragging || stateManager.getState() !== STATES.PLAYING) return;
+        updateAim(e);
+    });
+
+    touchArea.addEventListener('pointerup', () => {
+        isDragging = false;
+    });
+}
+
+function updateAim(event) {
+    aim.x = (event.clientX / window.innerWidth) * 2 - 1;
+    aim.y = -(event.clientY / window.innerHeight) * 2 + 1;
+}
+
+function togglePause() {
+    if(stateManager.getState() === STATES.PLAYING) {
+        stateManager.changeState(STATES.PAUSED);
+    } else if (stateManager.getState() === STATES.PAUSED) {
+        stateManager.changeState(STATES.PLAYING);
+    }
 }
 
 function loadData() {
@@ -151,6 +138,10 @@ function loadData() {
         try {
             const parsed = JSON.parse(saved);
             playerData = { ...playerData, ...parsed };
+            // Ensure nested default settings exist if an older save was loaded
+            if (!playerData.settings) {
+                playerData.settings = { shake: true, move: true };
+            }
         } catch (e) {
             console.error("Failed to parse save data", e);
         }
@@ -159,97 +150,6 @@ function loadData() {
 
 function saveData() {
     localStorage.setItem('ninjaStarBreaker3D', JSON.stringify(playerData));
-}
-
-function initThreeJS() {
-    const container = document.getElementById('game-container');
-
-    // Scene
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x020205);
-    scene.fog = new THREE.FogExp2(0x020205, 0.015);
-
-    // Camera
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
-    camera.position.set(0, 5, 15);
-    camera.lookAt(0, 2, -20);
-
-    // Renderer
-    const canvas = document.createElement('canvas');
-    canvas.id = 'game-canvas';
-    container.appendChild(canvas);
-
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
-    scene.add(ambientLight);
-
-    const mainLight = new THREE.DirectionalLight(0x4466ff, 1);
-    mainLight.position.set(20, 30, 20);
-    mainLight.castShadow = true;
-    mainLight.shadow.mapSize.width = 1024;
-    mainLight.shadow.mapSize.height = 1024;
-    mainLight.shadow.camera.near = 0.5;
-    mainLight.shadow.camera.far = 100;
-    mainLight.shadow.camera.left = -20;
-    mainLight.shadow.camera.right = 20;
-    mainLight.shadow.camera.top = 20;
-    mainLight.shadow.camera.bottom = -20;
-    scene.add(mainLight);
-
-    const fillLight = new THREE.DirectionalLight(0xff00ff, 0.5);
-    fillLight.position.set(-20, 10, -20);
-    scene.add(fillLight);
-
-    // Lane/Platform
-    const laneGeom = new THREE.PlaneGeometry(30, 1000);
-    const laneMat = new THREE.MeshStandardMaterial({
-        color: 0x0a0a1a,
-        roughness: 0.9,
-        metalness: 0.1
-    });
-    lane = new THREE.Mesh(laneGeom, laneMat);
-    lane.rotation.x = -Math.PI / 2;
-    lane.position.y = 0;
-    lane.position.z = -400;
-    lane.receiveShadow = true;
-    scene.add(lane);
-
-    // Decorative pillars
-    const pillarGeom = new THREE.BoxGeometry(1, 10, 1);
-    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x111122, emissive: 0x00ffff, emissiveIntensity: 0.2 });
-
-    for(let i = 0; i < 20; i++) {
-        let p1 = new THREE.Mesh(pillarGeom, pillarMat);
-        p1.position.set(-15, 5, -i * 50);
-        p1.castShadow = true;
-        p1.receiveShadow = true;
-        scene.add(p1);
-
-        let p2 = new THREE.Mesh(pillarGeom, pillarMat);
-        p2.position.set(15, 5, -i * 50);
-        p2.castShadow = true;
-        p2.receiveShadow = true;
-        scene.add(p2);
-    }
-
-    // Grid helper for ninja aesthetic
-    const grid = new THREE.GridHelper(30, 60, 0x00ffff, 0x002222);
-    grid.position.y = 0.01;
-    scene.add(grid);
-
-    window.addEventListener('resize', onWindowResize);
-}
-
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 // --- MODELS & SHAPES ---
@@ -271,7 +171,7 @@ function createWeaponMesh(weaponData) {
     switch(weaponData.shape) {
         case 'star':
             // Simple 4-point star using cylinder with 4 radial segments
-            geometry = new THREE.CylinderGeometry(0, 1, 0.2, 4);
+            geometry = new THREE.CylinderGeometry(0.01, 1, 0.2, 4);
             break;
         case 'knife':
             geometry = new THREE.BoxGeometry(0.2, 2, 0.5);
@@ -296,139 +196,15 @@ function createWeaponMesh(weaponData) {
     return weaponMesh;
 }
 
-function createObjectMesh(materialData) {
-    let geometry;
-    const material = new THREE.MeshStandardMaterial({
-        color: materialData.color,
-        roughness: 0.6,
-        metalness: 0.1
-    });
-
-    const size = 1.5 + (materialData.hp / 200); // Scale up slightly based on hp
-
-    switch(materialData.shape) {
-        case 'plane':
-            geometry = new THREE.BoxGeometry(size, size, 0.1);
-            break;
-        case 'cylinder':
-            geometry = new THREE.CylinderGeometry(size/2, size/2, size, 16);
-            break;
-        case 'box':
-            geometry = new THREE.BoxGeometry(size, size, size);
-            break;
-        case 'dodecahedron':
-            geometry = new THREE.DodecahedronGeometry(size/1.5);
-            break;
-        default:
-            geometry = new THREE.BoxGeometry(size, size, size);
-    }
-
-    const mesh = new THREE.Mesh(geometry, material);
-    return mesh;
-}
-
-// --- UI & EVENTS ---
-
-function initUI() {
-    document.getElementById('best-score-display').innerText = playerData.bestScore;
-    document.getElementById('start-coins-display').innerText = playerData.coins;
-
-    // Create weapons grid for shop
-    renderShop();
-}
-
-function bindEvents() {
-    document.getElementById('play-btn').addEventListener('click', startGame);
-    document.getElementById('retry-btn').addEventListener('click', startGame);
-
-    document.getElementById('shop-btn-start').addEventListener('click', openShop);
-    document.getElementById('shop-btn-go').addEventListener('click', openShop);
-    document.getElementById('back-btn').addEventListener('click', closeShop);
-
-    // In-game buttons
-    document.getElementById('pause-btn').addEventListener('click', togglePause);
-    document.getElementById('resume-btn').addEventListener('click', togglePause);
-    document.getElementById('restart-btn').addEventListener('click', startGame);
-    document.getElementById('quit-btn').addEventListener('click', () => {
-        currentState = STATES.START;
-        switchScreen('start-screen');
-    });
-
-    // Touch / Mouse Aiming
-    const touchArea = document.getElementById('mobile-control-area');
-
-    touchArea.addEventListener('pointerdown', (e) => {
-        if(currentState !== STATES.PLAYING) return;
-        isDragging = true;
-        updateAim(e);
-        throwProjectile();
-    });
-
-    touchArea.addEventListener('pointermove', (e) => {
-        if(!isDragging || currentState !== STATES.PLAYING) return;
-        updateAim(e);
-    });
-
-    touchArea.addEventListener('pointerup', () => {
-        isDragging = false;
-    });
-}
-
-function updateAim(event) {
-    // Convert screen pixel to normalized -1 to +1
-    aim.x = (event.clientX / window.innerWidth) * 2 - 1;
-    aim.y = -(event.clientY / window.innerHeight) * 2 + 1;
-}
-
-function togglePause() {
-    if(currentState === STATES.PLAYING) {
-        currentState = STATES.PAUSED;
-        switchScreen('pause-screen');
-    } else if (currentState === STATES.PAUSED) {
-        currentState = STATES.PLAYING;
-        switchScreen('game-ui');
-    }
-}
-
-function switchScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-    if (screenId) {
-        document.getElementById(screenId).classList.remove('hidden');
-    }
-}
-
 // --- GAME STATE FLOW ---
 
 function startGame() {
-    currentState = STATES.PLAYING;
-    switchScreen('game-ui');
+    stateManager.changeState(STATES.PLAYING);
 
-    // Reset Run
-    run = {
-        score: 0,
-        coins: 0,
-        distanceTraveled: 0,
-        objectsBroken: 0,
-        speed: 40,
-        wave: 1,
-        combo: 0,
-        comboTimer: 0,
-        damageMultiplier: 1,
-        speedMultiplier: 1,
-        powerupTimer: 0
-    };
-
-    // Get Selected Weapon
     const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
-    run.power = weaponData.power;
-    run.maxPower = weaponData.power;
+    run = createRun(weaponData);
 
-    document.getElementById('ui-wave').innerText = '1';
-    document.getElementById('ui-score').innerText = '0';
-    document.getElementById('ui-coins').innerText = '0';
-    document.getElementById('ui-weapon-name').innerText = weaponData.name;
-    document.getElementById('boss-warning').classList.add('hidden');
-    document.getElementById('combo-display').classList.add('hidden');
+    resetGameUI(weaponData);
 
     // Setup Scene
     createWeaponMesh(weaponData);
@@ -440,100 +216,35 @@ function startGame() {
     activeObjects = [];
 
     // Spawn initial objects
-    spawnObject(-30);
-    spawnObject(-60);
-    spawnObject(-90);
+    for(let i=0; i<3; i++) {
+        spawnObject(-40 - (i * 20));
+    }
 }
 
 function gameOver() {
-    currentState = STATES.GAMEOVER;
-    switchScreen('game-over-screen');
-
-    document.getElementById('go-score').innerText = run.score;
-    document.getElementById('go-coins').innerText = run.coins;
-
-    playerData.coins += run.coins;
-    if (run.score > playerData.bestScore) {
-        playerData.bestScore = run.score;
-    }
-
+    const newState = handleGameOver(run, playerData, playSound);
+    stateManager.changeState(newState);
     saveData();
-
-    document.getElementById('best-score-display').innerText = playerData.bestScore;
-    document.getElementById('start-coins-display').innerText = playerData.coins;
+    updateUIDisplay(playerData);
 }
 
 // --- SHOP ---
 
 function openShop() {
-    currentState = STATES.SHOP;
-    switchScreen('shop-screen');
-    renderShop();
+    stateManager.changeState(STATES.SHOP);
+    document.getElementById('shop-coins').innerText = playerData.coins;
+    renderShop(playerData, window.selectWeapon, window.buyWeapon);
 }
 
 function closeShop() {
-    currentState = STATES.START;
-    switchScreen('start-screen');
+    stateManager.changeState(STATES.START);
 }
 
-function renderShop() {
-    const grid = document.getElementById('weapons-grid');
-    grid.innerHTML = '';
-    document.getElementById('shop-coins').innerText = playerData.coins;
-
-    WEAPONS.forEach(w => {
-        const isUnlocked = playerData.unlockedWeapons.includes(w.id);
-        const isSelected = playerData.selectedWeaponId === w.id;
-
-        const card = document.createElement('div');
-        card.className = `weapon-card ${isUnlocked ? 'unlocked' : ''} ${isSelected ? 'selected' : ''}`;
-
-        card.innerHTML = `
-            <div class="weapon-icon">${w.icon}</div>
-            <div class="weapon-name">${w.name}</div>
-            <div class="weapon-stats">
-                DMG: ${w.damage}<br>
-                PWR: ${w.power}
-            </div>
-        `;
-
-        const btn = document.createElement('button');
-        if (isSelected) {
-            btn.className = 'weapon-action-btn btn-selected';
-            btn.innerText = 'Selected';
-        } else if (isUnlocked) {
-            btn.className = 'weapon-action-btn btn-select';
-            btn.innerText = 'Select';
-            btn.onclick = () => {
-                playerData.selectedWeaponId = w.id;
-                saveData();
-                renderShop(); // Refresh
-            };
-        } else {
-            btn.className = 'weapon-action-btn btn-buy';
-            btn.innerText = `${w.cost} Coins`;
-            if (playerData.coins < w.cost) {
-                btn.disabled = true;
-            } else {
-                btn.onclick = () => {
-                    playerData.coins -= w.cost;
-                    playerData.unlockedWeapons.push(w.id);
-                    playerData.selectedWeaponId = w.id;
-                    saveData();
-                    renderShop(); // Refresh
-                };
-            }
-        }
-
-        card.appendChild(btn);
-        grid.appendChild(card);
-    });
-}
 
 // --- PROJECTILE SYSTEM ---
 
 function throwProjectile() {
-    if (run.power <= 0 || currentState !== STATES.PLAYING) return;
+    if (run.power <= 0 || stateManager.getState() !== STATES.PLAYING) return;
 
     playSound('throw');
 
@@ -587,8 +298,6 @@ function getTrailColor(trailName) {
     }
 }
 
-// --- GAMEPLAY MECHANICS ---
-
 function spawnObject(zPos) {
     let objData;
     let isBoss = false;
@@ -614,42 +323,53 @@ function spawnObject(zPos) {
         isPowerup = true;
         objData = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
     } else {
-        // Normal object scaling based on wave
-        let maxIndex = Math.min(MATERIALS.length - 2, Math.floor(run.wave / 2)); // -2 to exclude BOSS
-        let matIndex = Math.floor(Math.random() * (maxIndex + 1));
-
-        // Favor harder objects in later waves
-        if (Math.random() > 0.5) matIndex = maxIndex;
-
-        objData = MATERIALS[matIndex];
+        // Random normal material (excluding boss)
+        const normalMats = MATERIALS.filter(m => m.name !== 'BOSS');
+        // Weight selection based on wave (later waves = harder mats)
+        const maxMatIndex = Math.min(normalMats.length - 1, Math.floor(run.wave / 2));
+        objData = normalMats[Math.floor(Math.random() * (maxMatIndex + 1))];
     }
 
-    const mesh = createObjectMesh(objData);
+    let geometry;
+    switch(objData.shape) {
+        case 'box': geometry = new THREE.BoxGeometry(2, 2, 2); break;
+        case 'cylinder': geometry = new THREE.CylinderGeometry(1, 1, 2, 16); break;
+        case 'dodecahedron': geometry = new THREE.DodecahedronGeometry(1.5); break;
+        case 'boss': geometry = new THREE.OctahedronGeometry(4); break;
+        default: geometry = new THREE.BoxGeometry(2, 2, 2);
+    }
 
-    // Random X position for variety
-    const xPos = (Math.random() - 0.5) * 8;
-    mesh.position.set(xPos, isBoss ? 3 : 1.5, zPos);
+    const material = new THREE.MeshStandardMaterial({
+        color: objData.color,
+        roughness: 0.7,
+        metalness: 0.1
+    });
 
-    if(isBoss) mesh.scale.set(3, 3, 3);
+    if(isBoss) {
+        material.emissive = new THREE.Color(0x330000);
+        material.emissiveIntensity = 0.5;
+    }
 
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Random X position within lane (-10 to 10)
+    mesh.position.x = (Math.random() - 0.5) * 20;
+    mesh.position.y = isBoss ? 4 : 1;
+    mesh.position.z = zPos;
+
+    if(isBoss) mesh.castShadow = true;
+
     scene.add(mesh);
 
-    // Apply wave difficulty multipliers to HP
-    let hp = objData.hp || 1;
-    if(!isPowerup) {
-        hp *= (1 + (run.wave * 0.2));
-    }
-
     activeObjects.push({
-        data: objData,
         mesh: mesh,
-        hp: hp,
+        data: objData,
+        hp: objData.hp,
+        maxHp: objData.hp,
         z: zPos,
-        x: xPos,
-        isPowerup: isPowerup,
-        isBoss: isBoss
+        x: mesh.position.x,
+        isBoss: isBoss,
+        isPowerup: isPowerup
     });
 }
 
@@ -681,8 +401,10 @@ let shakeTime = 0;
 let shakeMagnitude = 0;
 
 function applyCameraShake(magnitude, time) {
-    shakeMagnitude = magnitude;
-    shakeTime = time;
+    if (playerData.settings.shake) {
+        shakeMagnitude = magnitude;
+        shakeTime = time;
+    }
 }
 
 // --- MAIN LOOP ---
@@ -690,30 +412,30 @@ function applyCameraShake(magnitude, time) {
 function gameLoop() {
     const delta = clock.getDelta();
 
-    if (currentState === STATES.PLAYING) {
+    if (stateManager.getState() === STATES.PLAYING) {
         updateGameplay(delta);
-    }
 
-    // Update Particles
-    for (let i = particles.length - 1; i >= 0; i--) {
-        let p = particles[i];
-        p.life -= delta;
+        // Update Particles (only while playing)
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.life -= delta;
 
-        if (p.life <= 0) {
-            scene.remove(p.mesh);
-            p.mesh.geometry.dispose();
-            p.mesh.material.dispose();
-            particles.splice(i, 1);
-        } else {
-            p.mesh.position.addScaledVector(p.velocity, delta);
-            if(p.hasGravity) p.velocity.y -= 20 * delta; // Gravity
-            p.mesh.rotation.x += delta * 10;
-            p.mesh.rotation.y += delta * 10;
-            p.mesh.scale.setScalar(p.life / p.maxLife);
+            if (p.life <= 0) {
+                scene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+                particles.splice(i, 1);
+            } else {
+                p.mesh.position.addScaledVector(p.velocity, delta);
+                if(p.hasGravity) p.velocity.y -= 20 * delta; // Gravity
+                p.mesh.rotation.x += delta * 10;
+                p.mesh.rotation.y += delta * 10;
+                p.mesh.scale.setScalar(p.life / p.maxLife);
+            }
         }
     }
 
-    // Apply Camera Shake
+    // Apply Camera Shake (can still happen during other states like gameover)
     if (shakeTime > 0) {
         shakeTime -= delta;
         const offset = new THREE.Vector3(
@@ -959,6 +681,26 @@ function showFloatingText(text, typeClass) {
             container.removeChild(el);
         }
     }, 1000);
+}
+
+window.selectWeapon = function(weaponId) {
+    if (playerData.unlockedWeapons.includes(weaponId)) {
+        playSound('buy');
+        playerData.selectedWeaponId = weaponId;
+        saveData();
+        renderShop(playerData, window.selectWeapon, window.buyWeapon);
+    }
+}
+
+window.buyWeapon = function(weaponId, cost) {
+    if (playerData.coins >= cost && !playerData.unlockedWeapons.includes(weaponId)) {
+        playSound('buy');
+        playerData.coins -= cost;
+        playerData.unlockedWeapons.push(weaponId);
+        playerData.selectedWeaponId = weaponId;
+        saveData();
+        renderShop(playerData, window.selectWeapon, window.buyWeapon);
+    }
 }
 
 // Start everything when DOM is ready
