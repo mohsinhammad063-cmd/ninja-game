@@ -33,10 +33,16 @@ export function renderShop(playerData, selectWeapon, buyWeapon) {
             btn.disabled = true;
         } else if (isUnlocked) {
             btn.innerText = 'Select';
-            btn.onclick = () => window.selectWeapon(w.id);
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                window.selectWeapon(w.id);
+            };
         } else {
             btn.innerText = `Buy (${w.cost})`;
-            btn.onclick = () => window.buyWeapon(w.id, w.cost);
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                window.buyWeapon(w.id, w.cost);
+            };
         }
 
         card.appendChild(btn);

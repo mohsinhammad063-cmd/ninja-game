@@ -36,6 +36,10 @@ function init() {
     loadData();
     stateManager.subscribe((newState) => {
         handleStateChangeUI(newState, switchScreen);
+        if (newState === STATES.SHOP) {
+            document.getElementById('shop-coins').innerText = playerData.coins;
+            renderShop(playerData, window.selectWeapon, window.buyWeapon);
+        }
     });
     const sceneData = initScene();
     scene = sceneData.scene;
@@ -55,9 +59,22 @@ function bindEvents() {
     document.getElementById('play-btn').addEventListener('click', startGame);
     document.getElementById('retry-btn').addEventListener('click', startGame);
 
-    document.getElementById('shop-btn-start').addEventListener('click', openShop);
-    document.getElementById('shop-btn-go').addEventListener('click', openShop);
-    document.getElementById('back-btn').addEventListener('click', closeShop);
+    document.getElementById('shop-btn-start').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.START);
+    });
+    document.getElementById('shop-btn-go').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.GAMEOVER);
+    });
+    document.getElementById('shop-btn-pause').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.PAUSED);
+    });
+    document.getElementById('shop-exit-button').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.closeShop();
+    });
 
     // In-game buttons
     document.getElementById('pause-btn').addEventListener('click', togglePause);
@@ -87,7 +104,13 @@ function bindEvents() {
 
     // Keyboard Pause Controls
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' || e.key.toLowerCase() === 'p') {
+        if (e.key === 'Escape') {
+            if (stateManager.getState() === STATES.SHOP) {
+                stateManager.closeShop();
+            } else {
+                togglePause();
+            }
+        } else if (e.key.toLowerCase() === 'p') {
             togglePause();
         }
     });
@@ -230,16 +253,13 @@ function gameOver() {
 
 // --- SHOP ---
 
-function openShop() {
-    stateManager.changeState(STATES.SHOP);
-    document.getElementById('shop-coins').innerText = playerData.coins;
-    renderShop(playerData, window.selectWeapon, window.buyWeapon);
-}
-
-function closeShop() {
-    stateManager.changeState(STATES.START);
-}
-
+// Navigation is now handled through StateManager directly
+// To ensure the UI displays correctly when entering shop, we still need to render
+// This is handled partly by UIManager now, but we need to ensure shop is populated
+// when we enter it.
+// stateManager.subscribe already handles hiding/showing screens, but we need to hook into it
+// to update shop-coins and renderShop when we transition TO shop.
+// We can modify the subscription in init()
 
 // --- PROJECTILE SYSTEM ---
 

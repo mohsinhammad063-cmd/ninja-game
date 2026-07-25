@@ -308,7 +308,27 @@ canvas {
     justify-content: flex-start;
     padding-top: 40px;
     overflow-y: auto;
+    overflow-x: hidden;
     pointer-events: auto;
+}
+
+.shop-actions {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin-top: 24px;
+    padding: 16px 0 max(16px, env(safe-area-inset-bottom));
+}
+
+#shop-exit-button {
+    min-width: 44px;
+    min-height: 44px;
+    width: auto;
+}
+
+#shop-exit-button:focus {
+    outline: 2px solid #fff;
+    outline-offset: 4px;
 }
 
 .coins-display {

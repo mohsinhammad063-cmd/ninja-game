@@ -56,6 +56,7 @@
                 <h1 class="neon-title">PAUSED</h1>
                 <button id="resume-btn" class="neon-button">Continue Playing</button>
                 <button id="confirm-restart-btn" class="neon-button secondary">Restart Run</button>
+                <button id="shop-btn-pause" class="neon-button secondary">Shop</button>
                 <button id="settings-btn" class="neon-button secondary">Settings</button>
                 <button id="confirm-quit-btn" class="neon-button secondary">Exit to Main Menu</button>
             </div>
@@ -82,7 +83,11 @@
             <div class="weapons-grid" id="weapons-grid">
                 <!-- Weapon items will be injected here via JS -->
             </div>
-            <button id="back-btn" class="neon-button secondary">Back</button>
+            <div class="shop-actions">
+                <button id="shop-exit-button" type="button" class="neon-button secondary" aria-label="Exit Shop">
+                    Exit Shop
+                </button>
+            </div>
         </div>
 
         <!-- Game Over Screen -->
