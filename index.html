@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ninja Star Breaker 3D</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/src/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
@@ -32,7 +32,6 @@
 
             <div class="game-controls">
                 <button id="pause-btn" class="hud-btn">⏸️</button>
-                <button id="restart-btn" class="hud-btn">🔄</button>
             </div>
 
             <div id="combo-display" class="hidden">Combo x<span id="ui-combo">2</span>!</div>
@@ -53,9 +52,27 @@
 
         <!-- Pause Screen -->
         <div id="pause-screen" class="screen hidden">
-            <h1 class="neon-title">PAUSED</h1>
-            <button id="resume-btn" class="neon-button">Resume</button>
-            <button id="quit-btn" class="neon-button secondary">Quit</button>
+            <div id="pause-main-menu">
+                <h1 class="neon-title">PAUSED</h1>
+                <button id="resume-btn" class="neon-button">Continue Playing</button>
+                <button id="confirm-restart-btn" class="neon-button secondary">Restart Run</button>
+                <button id="settings-btn" class="neon-button secondary">Settings</button>
+                <button id="confirm-quit-btn" class="neon-button secondary">Exit to Main Menu</button>
+            </div>
+
+            <div id="restart-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Restart Run?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-restart-btn" class="neon-button text-danger">Yes, Restart</button>
+                <button id="cancel-restart-btn" class="neon-button secondary">Cancel</button>
+            </div>
+
+            <div id="quit-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Exit Game?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-quit-btn" class="neon-button text-danger">Yes, Exit</button>
+                <button id="cancel-quit-btn" class="neon-button secondary">Cancel</button>
+            </div>
         </div>
 
         <!-- Shop Screen -->
@@ -80,6 +97,6 @@
         </div>
     </div>
 
-    <script src="game.js"></script>
+    <script type="module" src="/src/game.js"></script>
 </body>
 </html>

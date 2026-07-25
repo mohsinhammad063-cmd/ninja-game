@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ninja Star Breaker 3D</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module" crossorigin src="/assets/index-CM_gbObP.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CKzIdjD3.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="neon-title">Ninja Star Breaker 3D</h1>
+            <div id="version-label">v5.0 3D Fun Shop Update</div>
+            <p class="tutorial-text">Throw your weapon. Break objects. Earn coins. Unlock stronger ninja weapons.</p>
+            <div class="stats-container">
+                <p>Best Score: <span id="best-score-display">0</span></p>
+                <p>Coins: <span id="start-coins-display">0</span></p>
+            </div>
+            <button id="play-btn" class="neon-button">Play</button>
+            <button id="shop-btn-start" class="neon-button secondary">Shop</button>
+        </div>
+
+        <!-- Game UI Overlay (Visible during gameplay) -->
+        <div id="game-ui" class="screen hidden">
+            <div class="top-bar">
+                <div class="stat-box">Wave: <span id="ui-wave">1</span></div>
+                <div class="stat-box">Score: <span id="ui-score">0</span></div>
+                <div class="stat-box">Coins: <span id="ui-coins">0</span></div>
+            </div>
+
+            <div class="game-controls">
+                <button id="pause-btn" class="hud-btn">⏸️</button>
+            </div>
+
+            <div id="combo-display" class="hidden">Combo x<span id="ui-combo">2</span>!</div>
+            <div id="boss-warning" class="hidden">BOSS WAVE!</div>
+            <div id="floating-text-container"></div>
+
+            <div class="crosshair">+</div>
+
+            <div id="power-bar-container">
+                <div class="weapon-info">
+                    <span id="ui-weapon-name">Ninja Star</span>
+                </div>
+                <div id="power-bar-fill"></div>
+            </div>
+
+            <div id="mobile-control-area"></div>
+        </div>
+
+        <!-- Pause Screen -->
+        <div id="pause-screen" class="screen hidden">
+            <div id="pause-main-menu">
+                <h1 class="neon-title">PAUSED</h1>
+                <button id="resume-btn" class="neon-button">Continue Playing</button>
+                <button id="confirm-restart-btn" class="neon-button secondary">Restart Run</button>
+                <button id="settings-btn" class="neon-button secondary">Settings</button>
+                <button id="confirm-quit-btn" class="neon-button secondary">Exit to Main Menu</button>
+            </div>
+
+            <div id="restart-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Restart Run?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-restart-btn" class="neon-button text-danger">Yes, Restart</button>
+                <button id="cancel-restart-btn" class="neon-button secondary">Cancel</button>
+            </div>
+
+            <div id="quit-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Exit Game?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-quit-btn" class="neon-button text-danger">Yes, Exit</button>
+                <button id="cancel-quit-btn" class="neon-button secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen hidden">
+            <h1 class="neon-title small">Shop</h1>
+            <p class="coins-display">Coins: <span id="shop-coins">0</span></p>
+            <div class="weapons-grid" id="weapons-grid">
+                <!-- Weapon items will be injected here via JS -->
+            </div>
+            <button id="back-btn" class="neon-button secondary">Back</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen hidden">
+            <h1 class="neon-title text-danger">Game Over</h1>
+            <div class="stats-container large">
+                <p>Final Score: <span id="go-score">0</span></p>
+                <p>Coins Earned: <span id="go-coins">0</span></p>
+            </div>
+            <button id="retry-btn" class="neon-button">Retry</button>
+            <button id="shop-btn-go" class="neon-button secondary">Shop</button>
+        </div>
+    </div>
+
+</body>
+</html>

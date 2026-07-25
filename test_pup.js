@@ -30,16 +30,15 @@ const puppeteer = require('puppeteer');
   await page.screenshot({ path: 'screenshot_gameplay.png' });
   console.log('Saved gameplay screenshot');
 
-  // Wait for game over
-  await page.waitForSelector('#game-over-screen:not(.hidden)', { timeout: 35000 });
+  // Go to shop by exiting the game
+  await page.keyboard.press('Escape');
+  await new Promise(r => setTimeout(r, 500));
+  await page.click('#confirm-quit-btn');
+  await new Promise(r => setTimeout(r, 500));
+  await page.click('#do-quit-btn');
   await new Promise(r => setTimeout(r, 500));
 
-  // Screenshot 4: Game Over
-  await page.screenshot({ path: 'screenshot_gameover.png' });
-  console.log('Saved game over screenshot');
-
-  // Go to shop
-  await page.click('#shop-btn-go');
+  await page.click('#shop-btn-start');
   await new Promise(r => setTimeout(r, 500));
 
   // Screenshot 5: Shop
