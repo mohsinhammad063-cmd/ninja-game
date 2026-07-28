@@ -47,7 +47,19 @@
                 <div id="power-bar-fill"></div>
             </div>
 
-            <div id="mobile-control-area"></div>
+
+            <div id="mobile-controls-container" class="hidden">
+                <div id="dpad-container">
+                    <button class="dpad-btn" id="dpad-up">▲</button>
+                    <div class="dpad-row">
+                        <button class="dpad-btn" id="dpad-left">◀</button>
+                        <button class="dpad-btn" id="dpad-down">▼</button>
+                        <button class="dpad-btn" id="dpad-right">▶</button>
+                    </div>
+                </div>
+                <button id="mobile-throw-btn">THROW</button>
+            </div>
+
         </div>
 
         <!-- Pause Screen -->
@@ -74,6 +86,36 @@
                 <button id="do-quit-btn" class="neon-button text-danger">Yes, Exit</button>
                 <button id="cancel-quit-btn" class="neon-button secondary">Cancel</button>
             </div>
+
+            <div id="settings-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Settings</h2>
+                <div class="settings-row">
+                    <label for="music-toggle">Music</label>
+                    <input type="checkbox" id="music-toggle" checked>
+                </div>
+                <div class="settings-row">
+                    <label for="sfx-toggle">Sound Effects</label>
+                    <input type="checkbox" id="sfx-toggle" checked>
+                </div>
+                <div class="settings-row">
+                    <label for="master-vol">Master Vol</label>
+                    <input type="range" id="master-vol" min="0" max="1" step="0.05" value="0.7">
+                </div>
+                <div class="settings-row">
+                    <label for="music-vol">Music Vol</label>
+                    <input type="range" id="music-vol" min="0" max="1" step="0.05" value="0.45">
+                </div>
+                <div class="settings-row">
+                    <label for="sfx-vol">SFX Vol</label>
+                    <input type="range" id="sfx-vol" min="0" max="1" step="0.05" value="0.75">
+                </div>
+                <div class="settings-row">
+                    <label for="mobile-controls-toggle">Touch Controls</label>
+                    <input type="checkbox" id="mobile-controls-toggle">
+                </div>
+                <button id="close-settings-btn" class="neon-button">Back</button>
+            </div>
+
         </div>
 
         <!-- Shop Screen -->
