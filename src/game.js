@@ -1,5 +1,6 @@
 import { initScene } from './SceneManager.js';
-import { updateUIDisplay, renderShop, switchScreen, handleStateChangeUI, showRestartConfirmMenu, showQuitConfirmMenu, resetPauseMenuUI } from './UIManager.js';
+import { updateUIDisplay, renderShop, switchScreen, handleStateChangeUI, showRestartConfirmMenu, showQuitConfirmMenu, resetPauseMenuUI, showSettingsMenu, hideSettingsMenu } from './UIManager.js';
+import { audioManager } from './audio.js';
 import { createRun, resetGameUI, handleGameOver, safelyClearRun } from './GameManager.js';
 import { WEAPONS, MATERIALS, POWERUPS, STATES } from './constants.js';
 import { playSound } from './audio.js';
@@ -26,20 +27,29 @@ let playerData = {
     bestScore: 0,
     unlockedWeapons: ['ninja_star'],
     selectedWeaponId: 'ninja_star',
-    settings: {
-        shake: true,
-        move: true
-    }
+    settings: null // Will be initialized correctly by loadData to avoid duplicated code
 };
 
 function init() {
     loadData();
+    applyAudioSettings();
     stateManager.subscribe((newState) => {
         handleStateChangeUI(newState, switchScreen);
-        if (newState === STATES.SHOP) {
+
+        if (newState === STATES.START) {
+            audioManager.playMusic('menu');
+        } else if (newState === STATES.PLAYING) {
+            audioManager.playMusic('gameplay');
+        } else if (newState === STATES.GAMEOVER) {
+            audioManager.playMusic('gameover');
+        } else if (newState === STATES.SHOP) {
+            audioManager.playMusic('shop');
             document.getElementById('shop-coins').innerText = playerData.coins;
             renderShop(playerData, window.selectWeapon, window.buyWeapon);
+        } else if (newState === STATES.PAUSED) {
+            audioManager.pauseMusic();
         }
+
     });
     const sceneData = initScene();
     scene = sceneData.scene;
@@ -56,6 +66,7 @@ function init() {
 }
 
 function bindEvents() {
+    bindMobileControls();
     document.getElementById('play-btn').addEventListener('click', startGame);
     document.getElementById('retry-btn').addEventListener('click', startGame);
 
@@ -94,6 +105,7 @@ function bindEvents() {
 
     document.getElementById('confirm-quit-btn').addEventListener('click', showQuitConfirmMenu);
     document.getElementById('cancel-quit-btn').addEventListener('click', resetPauseMenuUI);
+    bindAudioSettingsUI();
     document.getElementById('do-quit-btn').addEventListener('click', () => {
         safelyClearRun(scene, activeObjects, projectiles, particles);
         activeObjects = [];
@@ -121,58 +133,263 @@ function bindEvents() {
             stateManager.changeState(STATES.PAUSED);
         }
     });
-
-    // Touch / Mouse Aiming
-    const touchArea = document.getElementById('mobile-control-area');
-
-    touchArea.addEventListener('pointerdown', (e) => {
-        if(stateManager.getState() !== STATES.PLAYING) return;
-        isDragging = true;
-        updateAim(e);
-        throwProjectile();
-    });
-
-    touchArea.addEventListener('pointermove', (e) => {
-        if(!isDragging || stateManager.getState() !== STATES.PLAYING) return;
-        updateAim(e);
-    });
-
-    touchArea.addEventListener('pointerup', () => {
-        isDragging = false;
-    });
-}
-
-function updateAim(event) {
-    aim.x = (event.clientX / window.innerWidth) * 2 - 1;
-    aim.y = -(event.clientY / window.innerHeight) * 2 + 1;
 }
 
 function togglePause() {
     if(stateManager.getState() === STATES.PLAYING) {
+        audioManager.playSound('pause');
         stateManager.changeState(STATES.PAUSED);
     } else if (stateManager.getState() === STATES.PAUSED) {
+        audioManager.resumeMusic();
         stateManager.changeState(STATES.PLAYING);
     }
 }
+
+
+function applyAudioSettings() {
+    audioManager.setMasterVolume(playerData.settings.masterVolume);
+    audioManager.setMusicVolume(playerData.settings.musicVolume);
+    audioManager.setEffectsVolume(playerData.settings.sfxVolume);
+    audioManager.setMusicEnabled(playerData.settings.musicEnabled);
+    audioManager.setEffectsEnabled(playerData.settings.sfxEnabled);
+
+    document.getElementById('master-vol').value = playerData.settings.masterVolume;
+    document.getElementById('music-vol').value = playerData.settings.musicVolume;
+    document.getElementById('sfx-vol').value = playerData.settings.sfxVolume;
+    document.getElementById('music-toggle').checked = playerData.settings.musicEnabled;
+    document.getElementById('sfx-toggle').checked = playerData.settings.sfxEnabled;
+    document.getElementById('mobile-controls-toggle').checked = playerData.settings.touchControls;
+
+    updateTouchControlsVisibility();
+}
+
+function bindAudioSettingsUI() {
+    document.getElementById('settings-btn').addEventListener('click', showSettingsMenu);
+    document.getElementById('close-settings-btn').addEventListener('click', () => {
+        hideSettingsMenu();
+        saveData();
+    });
+
+    document.getElementById('master-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.masterVolume = val;
+        audioManager.setMasterVolume(val);
+    });
+
+    document.getElementById('music-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.musicVolume = val;
+        audioManager.setMusicVolume(val);
+    });
+
+    document.getElementById('sfx-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.sfxVolume = val;
+        audioManager.setEffectsVolume(val);
+    });
+
+    document.getElementById('music-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.musicEnabled = val;
+        audioManager.setMusicEnabled(val);
+    });
+
+    document.getElementById('sfx-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.sfxEnabled = val;
+        audioManager.setEffectsEnabled(val);
+    });
+
+    document.getElementById('mobile-controls-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.touchControls = val;
+        updateTouchControlsVisibility();
+    });
+}
+
+
+function bindMobileControls() {
+    const throwBtn = document.getElementById('mobile-throw-btn');
+    if (throwBtn) {
+        let autofireInterval = null;
+
+        throwBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            throwProjectile();
+            autofireInterval = setInterval(throwProjectile, 150);
+        });
+
+        throwBtn.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            if (autofireInterval) {
+                clearInterval(autofireInterval);
+                autofireInterval = null;
+            }
+        });
+
+        throwBtn.addEventListener('pointercancel', (e) => {
+            e.preventDefault();
+            if (autofireInterval) {
+                clearInterval(autofireInterval);
+                autofireInterval = null;
+            }
+        });
+    }
+
+    const dpadMap = {
+        'dpad-up': 'ArrowUp',
+        'dpad-down': 'ArrowDown',
+        'dpad-left': 'ArrowLeft',
+        'dpad-right': 'ArrowRight'
+    };
+
+    Object.keys(dpadMap).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = true;
+                btn.classList.add('active');
+            });
+            btn.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+            btn.addEventListener('pointercancel', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+            btn.addEventListener('pointerleave', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+        }
+    });
+}
+
+function updateTouchControlsVisibility() {
+    const area = document.getElementById('mobile-controls-container');
+    if (area) {
+        if (playerData.settings.touchControls) {
+            area.classList.remove('hidden');
+        } else {
+            area.classList.add('hidden');
+        }
+    }
+}
+
+const DEFAULT_SETTINGS = {
+    shake: true,
+    move: true,
+    masterVolume: 0.7,
+    musicVolume: 0.45,
+    sfxVolume: 0.75,
+    musicEnabled: true,
+    sfxEnabled: true,
+    touchControls: ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+};
 
 function loadData() {
     const saved = localStorage.getItem('ninjaStarBreaker3D');
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
+            // Deep merge to ensure all settings keys exist, keeping parsed ones
             playerData = { ...playerData, ...parsed };
-            // Ensure nested default settings exist if an older save was loaded
+
             if (!playerData.settings) {
-                playerData.settings = { shake: true, move: true };
+                playerData.settings = { ...DEFAULT_SETTINGS };
+            } else {
+                playerData.settings = { ...DEFAULT_SETTINGS, ...playerData.settings };
             }
         } catch (e) {
             console.error("Failed to parse save data", e);
+            // Reset to defaults if corrupted
+            playerData.settings = { ...DEFAULT_SETTINGS };
         }
+    } else {
+        playerData.settings = { ...DEFAULT_SETTINGS };
     }
 }
 
 function saveData() {
     localStorage.setItem('ninjaStarBreaker3D', JSON.stringify(playerData));
+}
+
+
+// --- INPUT STATE ---
+const keys = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false,
+    w: false,
+    s: false,
+    a: false,
+    d: false
+};
+
+window.addEventListener('keydown', (e) => {
+    if (stateManager.getState() === STATES.PLAYING) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            e.preventDefault(); // Prevent scrolling
+        }
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            throwProjectile();
+        }
+    }
+
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = true;
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = false;
+    }
+});
+
+function updateAimFromInput(delta) {
+    if (stateManager.getState() !== STATES.PLAYING) return;
+
+    const aimSpeed = 2.0; // adjust sensitivity
+
+    let dx = 0;
+    let dy = 0;
+
+    if (keys.ArrowLeft || keys.a) dx -= 1;
+    if (keys.ArrowRight || keys.d) dx += 1;
+    if (keys.ArrowUp || keys.w) dy += 1;
+    if (keys.ArrowDown || keys.s) dy -= 1;
+
+    // Normalize diagonal movement
+    if (dx !== 0 && dy !== 0) {
+        const length = Math.sqrt(dx * dx + dy * dy);
+        dx /= length;
+        dy /= length;
+    }
+
+    aim.x += dx * aimSpeed * delta;
+    aim.y += dy * aimSpeed * delta;
+
+    // Clamp
+    aim.x = Math.max(-1, Math.min(1, aim.x));
+    aim.y = Math.max(-1, Math.min(1, aim.y));
+
+    // Update visual crosshair
+    const crosshair = document.querySelector('.crosshair');
+    if (crosshair) {
+        // Map -1..1 to 0..100%
+        const xPos = ((aim.x + 1) / 2) * 100;
+        const yPos = ((-aim.y + 1) / 2) * 100;
+        crosshair.style.left = `${xPos}%`;
+        crosshair.style.top = `${yPos}%`;
+    }
 }
 
 // --- MODELS & SHAPES ---
@@ -266,7 +483,7 @@ function gameOver() {
 function throwProjectile() {
     if (run.power <= 0 || stateManager.getState() !== STATES.PLAYING) return;
 
-    playSound('throw');
+    playSound('throw', playerData.selectedWeaponId);
 
     const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
 
@@ -338,6 +555,9 @@ function spawnObject(zPos) {
 
         // Increase base speed slightly every wave
         run.speed = Math.min(80, 40 + (run.wave * 2));
+        audioManager.fadeToMusic('boss');
+        audioManager.playSound('boss_entrance');
+
     } else if (Math.random() < 0.1) {
         // 10% chance for powerup
         isPowerup = true;
@@ -432,8 +652,11 @@ function applyCameraShake(magnitude, time) {
 function gameLoop() {
     const delta = clock.getDelta();
 
+
     if (stateManager.getState() === STATES.PLAYING) {
+        updateAimFromInput(delta);
         updateGameplay(delta);
+
 
         // Update Particles (only while playing)
         for (let i = particles.length - 1; i >= 0; i--) {
@@ -523,7 +746,7 @@ function updateGameplay(delta) {
 
                 // Check Destroy
                 if (target.hp <= 0) {
-                    playSound('break');
+                    playSound('break_wood');
                     createBreakParticles(target.mesh.position, target.data.color);
                     applyCameraShake(target.isBoss ? 1.0 : 0.4, 0.2);
 

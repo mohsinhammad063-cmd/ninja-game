@@ -93,3 +93,15 @@ export function showQuitConfirmMenu() {
     document.getElementById('pause-main-menu').classList.add('hidden');
     document.getElementById('quit-confirm-menu').classList.remove('hidden');
 }
+
+export function showSettingsMenu() {
+    document.getElementById('pause-main-menu').classList.add('hidden');
+    document.getElementById('settings-menu').classList.remove('hidden');
+    document.getElementById('settings-menu').style.display = 'flex';
+}
+
+export function hideSettingsMenu() {
+    document.getElementById('settings-menu').classList.add('hidden');
+    document.getElementById('settings-menu').style.display = 'none';
+    document.getElementById('pause-main-menu').classList.remove('hidden');
+}
