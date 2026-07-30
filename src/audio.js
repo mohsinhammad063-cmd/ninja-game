@@ -286,6 +286,61 @@ class AudioManager {
                 duration = 0.05;
                 break;
 
+            case 'hit_wood':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.05);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'hit_stone':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.05);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'hit_metal':
+            case 'metal_impact':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'hit_crystal':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1000, now);
+                osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'hit_gold':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.05);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'hit_boss':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.08);
+                gainNode.gain.setValueAtTime(0.25, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                duration = 0.08;
+                break;
+
             case 'critical_hit':
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(300, now);
@@ -296,10 +351,24 @@ class AudioManager {
                 break;
 
             case 'break_wood':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                duration = 0.2;
+                break;
             case 'break_stone':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                duration = 0.2;
+                break;
             case 'break':
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(type === 'break_wood' ? 100 : 80, now);
+                osc.frequency.setValueAtTime(80, now);
                 osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
                 gainNode.gain.setValueAtTime(0.3, now);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
@@ -314,14 +383,30 @@ class AudioManager {
                 gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
                 duration = 0.1;
                 break;
-
-            case 'metal_impact':
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(600, now);
-                osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+            case 'break_metal':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
                 gainNode.gain.setValueAtTime(0.3, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-                duration = 0.05;
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                duration = 0.15;
+                break;
+            case 'break_gold':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1200, now);
+                osc.frequency.setValueAtTime(1500, now + 0.05);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                duration = 0.2;
+                break;
+            case 'break_boss':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+                gainNode.gain.setValueAtTime(0.4, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                duration = 0.5;
                 break;
 
             case 'coin':
@@ -406,6 +491,9 @@ class AudioManager {
                 gainNode.gain.linearRampToValueAtTime(0, now + 1.0);
                 duration = 1.0;
                 break;
+            default:
+                console.warn(`[AudioManager] Unknown sound ID: ${type}`);
+                return; // fail safely without making sound
         }
 
         osc.start(now);

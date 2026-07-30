@@ -1,0 +1,2429 @@
+import { WEAPONS, STATES, POWERUPS, MATERIALS } from './constants.js';
+import { playSound } from './audio.js';
+import { updateUIDisplay, renderShop, switchScreen } from './UIManager.js';
+
+export function createRun(weaponData) {
+    return {
+        score: 0,
+        coins: 0,
+        distanceTraveled: 0,
+        objectsBroken: 0,
+        speed: 40,
+        wave: 1,
+        combo: 0,
+        comboTimer: 0,
+        damageMultiplier: 1,
+        speedMultiplier: 1,
+        powerupTimer: 0,
+        power: weaponData.power,
+        maxPower: weaponData.power
+    };
+}
+
+export function resetGameUI(weaponData) {
+    document.getElementById('ui-wave').innerText = '1';
+    document.getElementById('ui-score').innerText = '0';
+    document.getElementById('ui-coins').innerText = '0';
+    document.getElementById('ui-weapon-name').innerText = weaponData.name;
+    document.getElementById('boss-warning').classList.add('hidden');
+    document.getElementById('combo-display').classList.add('hidden');
+    document.getElementById('power-bar-fill').style.width = '100%';
+}
+
+export function handleGameOver(run, playerData, playSound) {
+    playSound('hit');
+
+    // Update Stats
+    if (run.score > playerData.bestScore) {
+        playerData.bestScore = run.score;
+    }
+    playerData.coins += run.coins;
+
+    document.getElementById('go-score').innerText = run.score;
+    document.getElementById('go-coins').innerText = run.coins;
+
+    return STATES.GAMEOVER;
+}
+
+export function safelyClearRun(scene, activeObjects, projectiles, particles) {
+    // Clear active objects
+    activeObjects.forEach(obj => {
+        scene.remove(obj.mesh);
+        obj.mesh.geometry.dispose();
+        obj.mesh.material.dispose();
+    });
+
+    // Clear projectiles
+    projectiles.forEach(proj => {
+        scene.remove(proj.mesh);
+        proj.mesh.geometry.dispose();
+        proj.mesh.material.dispose();
+    });
+
+    // Clear particles
+    particles.forEach(p => {
+        scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+    });
+
+    // Arrays must be emptied by the caller or we can return empty arrays to them
+}
+export function initScene() {
+    const container = document.getElementById('game-container');
+
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205);
+    scene.fog = new THREE.FogExp2(0x020205, 0.015);
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+    updateCameraProfile(camera);
+
+    // Renderer
+    const canvas = document.createElement('canvas');
+    canvas.id = 'game-canvas';
+    container.appendChild(canvas);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+    scene.add(ambientLight);
+
+    const mainLight = new THREE.DirectionalLight(0x4466ff, 1);
+    mainLight.position.set(20, 30, 20);
+    mainLight.castShadow = true;
+    mainLight.shadow.mapSize.width = 1024;
+    mainLight.shadow.mapSize.height = 1024;
+    mainLight.shadow.camera.near = 0.5;
+    mainLight.shadow.camera.far = 100;
+    mainLight.shadow.camera.left = -20;
+    mainLight.shadow.camera.right = 20;
+    mainLight.shadow.camera.top = 20;
+    mainLight.shadow.camera.bottom = -20;
+    scene.add(mainLight);
+
+    const fillLight = new THREE.DirectionalLight(0xff00ff, 0.5);
+    fillLight.position.set(-20, 10, -20);
+    scene.add(fillLight);
+
+    // Lane/Platform
+    const laneGeom = new THREE.PlaneGeometry(30, 1000);
+    const laneMat = new THREE.MeshStandardMaterial({
+        color: 0x0a0a1a,
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    const lane = new THREE.Mesh(laneGeom, laneMat);
+    lane.rotation.x = -Math.PI / 2;
+    lane.position.y = 0;
+    lane.position.z = -400;
+    lane.receiveShadow = true;
+    scene.add(lane);
+
+    // Decorative pillars
+    const pillarGeom = new THREE.BoxGeometry(1, 10, 1);
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x111122, emissive: 0x00ffff, emissiveIntensity: 0.2 });
+
+    for(let i = 0; i < 20; i++) {
+        let p1 = new THREE.Mesh(pillarGeom, pillarMat);
+        p1.position.set(-15, 5, -i * 50);
+        p1.castShadow = true;
+        p1.receiveShadow = true;
+        scene.add(p1);
+
+        let p2 = new THREE.Mesh(pillarGeom, pillarMat);
+        p2.position.set(15, 5, -i * 50);
+        p2.castShadow = true;
+        p2.receiveShadow = true;
+        scene.add(p2);
+    }
+
+    // Grid helper for ninja aesthetic
+    const grid = new THREE.GridHelper(30, 60, 0x00ffff, 0x002222);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    window.addEventListener('resize', () => {
+        updateCameraProfile(camera);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    return { scene, camera, renderer, lane, grid };
+}
+
+export function updateCameraProfile(camera) {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const aspect = width / height;
+
+    camera.aspect = aspect;
+
+    if (aspect > 1.5) { // Desktop Widescreen
+        camera.fov = 75;
+        camera.position.set(0, 4.5, 12);
+        camera.lookAt(0, 1.5, -20);
+    } else if (aspect > 1.0) { // Tablet Landscape or narrower desktop
+        camera.fov = 78;
+        camera.position.set(0, 5, 14);
+        camera.lookAt(0, 2, -20);
+    } else if (aspect > 0.6) { // Tablet Portrait
+        camera.fov = 80;
+        camera.position.set(0, 6, 16);
+        camera.lookAt(0, 1, -20);
+    } else { // Mobile Portrait
+        camera.fov = 82;
+        camera.position.set(0, 7, 18);
+        camera.lookAt(0, 0, -20);
+    }
+
+    camera.updateProjectionMatrix();
+}
+import { STATES } from './constants.js';
+
+class StateManager {
+    constructor() {
+        this.currentState = STATES.START;
+        this.previousState = null;
+        this.shopReturnState = STATES.START;
+        this.listeners = [];
+    }
+
+    getState() {
+        return this.currentState;
+    }
+
+    openShop(originState) {
+        if (originState === STATES.START || originState === STATES.PAUSED || originState === STATES.GAMEOVER) {
+            this.shopReturnState = originState;
+        } else {
+            this.shopReturnState = STATES.START;
+        }
+        this.changeState(STATES.SHOP);
+    }
+
+    closeShop() {
+        this.changeState(this.shopReturnState);
+    }
+
+    changeState(newState) {
+        if (this.currentState === newState) return;
+
+        const previousState = this.currentState;
+        this.previousState = previousState;
+        this.currentState = newState;
+
+        // Notify listeners of state change
+        this.listeners.forEach(listener => listener(newState, previousState));
+    }
+
+    subscribe(listener) {
+        this.listeners.push(listener);
+    }
+}
+
+export const stateManager = new StateManager();
+import { WEAPONS, STATES } from './constants.js';
+
+export function updateUIDisplay(playerData) {
+    document.getElementById('best-score-display').innerText = playerData.bestScore;
+    document.getElementById('start-coins-display').innerText = playerData.coins;
+}
+
+export function renderShop(playerData, selectWeapon, buyWeapon) {
+    const grid = document.getElementById('weapons-grid');
+    grid.innerHTML = '';
+
+    WEAPONS.forEach(w => {
+        const isUnlocked = playerData.unlockedWeapons.includes(w.id);
+        const isSelected = playerData.selectedWeaponId === w.id;
+
+        const card = document.createElement('div');
+        card.className = `weapon-card ${isUnlocked ? 'unlocked' : ''} ${isSelected ? 'selected' : ''}`;
+
+        card.innerHTML = `
+            <div class="weapon-icon">${w.icon}</div>
+            <div class="weapon-name">${w.name}</div>
+            <div class="weapon-stats">
+                DMG: ${w.damage}<br>
+                PWR: ${w.power}
+            </div>
+        `;
+
+        const btn = document.createElement('button');
+        btn.className = `weapon-action-btn ${isSelected ? 'btn-selected' : isUnlocked ? 'btn-select' : 'btn-buy'}`;
+
+        if (isSelected) {
+            btn.innerText = 'Equipped';
+            btn.disabled = true;
+        } else if (isUnlocked) {
+            btn.innerText = 'Select';
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                window.selectWeapon(w.id);
+            };
+        } else {
+            btn.innerText = `Buy (${w.cost})`;
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                window.buyWeapon(w.id, w.cost);
+            };
+        }
+
+        card.appendChild(btn);
+        grid.appendChild(card);
+    });
+}
+
+export function switchScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    if (screenId) {
+        document.getElementById(screenId).classList.remove('hidden');
+    }
+}
+
+export function handleStateChangeUI(newState, switchScreen) {
+    switch (newState) {
+        case STATES.START:
+            switchScreen('start-screen');
+            break;
+        case STATES.PLAYING:
+            switchScreen('game-ui');
+            break;
+        case STATES.PAUSED:
+            switchScreen('pause-screen');
+            resetPauseMenuUI();
+            break;
+        case STATES.GAMEOVER:
+            switchScreen('game-over-screen');
+            break;
+        case STATES.SHOP:
+            switchScreen('shop-screen');
+            break;
+    }
+}
+
+export function resetPauseMenuUI() {
+    document.getElementById('pause-main-menu').classList.remove('hidden');
+    document.getElementById('restart-confirm-menu').classList.add('hidden');
+    document.getElementById('quit-confirm-menu').classList.add('hidden');
+}
+
+export function showRestartConfirmMenu() {
+    document.getElementById('pause-main-menu').classList.add('hidden');
+    document.getElementById('restart-confirm-menu').classList.remove('hidden');
+}
+
+export function showQuitConfirmMenu() {
+    document.getElementById('pause-main-menu').classList.add('hidden');
+    document.getElementById('quit-confirm-menu').classList.remove('hidden');
+}
+
+export function showSettingsMenu() {
+    document.getElementById('pause-main-menu').classList.add('hidden');
+    document.getElementById('settings-menu').classList.remove('hidden');
+    document.getElementById('settings-menu').style.display = 'flex';
+}
+
+export function hideSettingsMenu() {
+    document.getElementById('settings-menu').classList.add('hidden');
+    document.getElementById('settings-menu').style.display = 'none';
+    document.getElementById('pause-main-menu').classList.remove('hidden');
+}
+class AudioManager {
+    constructor() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Settings
+        this.masterVolume = 0.7;
+        this.musicVolume = 0.45;
+        this.sfxVolume = 0.75;
+        this.musicEnabled = true;
+        this.sfxEnabled = true;
+
+        // Nodes
+        this.masterGain = this.ctx.createGain();
+        this.musicGain = this.ctx.createGain();
+        this.sfxGain = this.ctx.createGain();
+
+        // Routing
+        this.musicGain.connect(this.masterGain);
+        this.sfxGain.connect(this.masterGain);
+        this.masterGain.connect(this.ctx.destination);
+
+        this.updateVolumes();
+
+        // Music State
+        this.currentTrack = null;
+        this.activeOscillators = [];
+        this.nextNoteTime = 0;
+        this.isPlaying = false;
+        this.isPaused = false;
+
+        // Timer
+        this.timerID = null;
+
+        // Tempo and patterns
+        this.tempo = 120;
+        this.lookahead = 25.0; // ms
+        this.scheduleAheadTime = 0.1; // s
+        this.currentNote = 0;
+
+        this.tracks = {
+            'menu': { tempo: 100, notes: [261.63, 329.63, 392.00, 329.63] },
+            'gameplay': { tempo: 140, notes: [220.00, 261.63, 329.63, 293.66, 220.00, 196.00, 220.00, 261.63] },
+            'boss': { tempo: 180, notes: [164.81, 174.61, 164.81, 196.00, 164.81, 174.61, 164.81, 220.00] },
+            'shop': { tempo: 90, notes: [392.00, 440.00, 493.88, 523.25, 493.88, 440.00] },
+            'gameover': { tempo: 80, notes: [329.63, 311.13, 293.66, 277.18, 261.63] }
+        };
+
+        // Sound Pool for limiting max instances
+        this.soundPools = {};
+    }
+
+    initializeAudio() {
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    updateVolumes() {
+        this.masterGain.gain.value = this.masterVolume;
+        this.musicGain.gain.value = this.musicEnabled ? this.musicVolume : 0;
+        this.sfxGain.gain.value = this.sfxEnabled ? this.sfxVolume : 0;
+    }
+
+    setMasterVolume(val) {
+        this.masterVolume = val;
+        this.updateVolumes();
+    }
+
+    setMusicVolume(val) {
+        this.musicVolume = val;
+        this.updateVolumes();
+    }
+
+    setEffectsVolume(val) {
+        this.sfxVolume = val;
+        this.updateVolumes();
+    }
+
+    setMusicEnabled(enabled) {
+        this.musicEnabled = enabled;
+        this.updateVolumes();
+    }
+
+    setEffectsEnabled(enabled) {
+        this.sfxEnabled = enabled;
+        this.updateVolumes();
+    }
+
+    nextNote() {
+        const secondsPerBeat = 60.0 / this.tempo;
+        this.nextNoteTime += 0.25 * secondsPerBeat;
+        this.currentNote++;
+
+        if (this.currentTrack && this.tracks[this.currentTrack]) {
+            if (this.currentNote >= this.tracks[this.currentTrack].notes.length) {
+                if (this.currentTrack === 'gameover') {
+                    this.stopMusic();
+                    return;
+                }
+                this.currentNote = 0;
+            }
+        }
+    }
+
+    scheduleNote(beatNumber, time) {
+        if (!this.currentTrack || !this.tracks[this.currentTrack]) return;
+
+        const track = this.tracks[this.currentTrack];
+        if (beatNumber >= track.notes.length) return;
+
+        const freq = track.notes[beatNumber];
+
+        const osc = this.ctx.createOscillator();
+        const gainNode = this.ctx.createGain();
+
+        osc.connect(gainNode);
+        gainNode.connect(this.musicGain);
+
+        if (this.currentTrack === 'boss') {
+            osc.type = 'sawtooth';
+        } else if (this.currentTrack === 'menu' || this.currentTrack === 'shop') {
+            osc.type = 'sine';
+        } else {
+            osc.type = 'triangle';
+        }
+
+        osc.frequency.value = freq;
+
+        gainNode.gain.setValueAtTime(0, time);
+        gainNode.gain.linearRampToValueAtTime(0.3, time + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+
+        osc.start(time);
+        osc.stop(time + 0.2);
+
+        this.activeOscillators.push(osc);
+
+        while (this.activeOscillators.length > 20) {
+            this.activeOscillators.shift();
+        }
+    }
+
+    scheduler() {
+        while (this.nextNoteTime < this.ctx.currentTime + this.scheduleAheadTime) {
+            this.scheduleNote(this.currentNote, this.nextNoteTime);
+            this.nextNote();
+        }
+        this.timerID = setTimeout(() => this.scheduler(), this.lookahead);
+    }
+
+    playMusic(trackId) {
+        if (this.currentTrack === trackId && this.isPlaying) return;
+
+        this.initializeAudio();
+        this.stopMusic();
+
+        if (!this.tracks[trackId]) return;
+
+        this.currentTrack = trackId;
+        this.tempo = this.tracks[trackId].tempo;
+        this.isPlaying = true;
+        this.isPaused = false;
+
+        this.currentNote = 0;
+        this.nextNoteTime = this.ctx.currentTime + 0.05;
+        this.scheduler();
+
+        this.musicGain.gain.setValueAtTime(0, this.ctx.currentTime);
+        this.musicGain.gain.linearRampToValueAtTime(this.musicEnabled ? this.musicVolume : 0, this.ctx.currentTime + 1.0);
+    }
+
+    fadeToMusic(trackId) {
+        if (this.currentTrack === trackId) return;
+
+        const now = this.ctx.currentTime;
+        this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+        this.musicGain.gain.linearRampToValueAtTime(0, now + 1.0);
+
+        setTimeout(() => {
+            this.playMusic(trackId);
+        }, 1000);
+    }
+
+    stopMusic() {
+        this.isPlaying = false;
+        if (this.timerID) {
+            clearTimeout(this.timerID);
+            this.timerID = null;
+        }
+        this.activeOscillators.forEach(osc => {
+            try {
+                osc.stop();
+                osc.disconnect();
+            } catch (e) {}
+        });
+        this.activeOscillators = [];
+        this.currentTrack = null;
+    }
+
+    pauseMusic() {
+        if (!this.isPlaying || this.isPaused) return;
+        this.isPaused = true;
+        const now = this.ctx.currentTime;
+        this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+        this.musicGain.gain.linearRampToValueAtTime(this.musicEnabled ? this.musicVolume * 0.3 : 0, now + 0.5);
+    }
+
+    resumeMusic() {
+        if (!this.isPlaying || !this.isPaused) return;
+        this.isPaused = false;
+        const now = this.ctx.currentTime;
+        this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+        this.musicGain.gain.linearRampToValueAtTime(this.musicEnabled ? this.musicVolume : 0, now + 0.5);
+    }
+
+    // --- SOUND EFFECTS ---
+
+    playSound(type, weaponId = null) {
+        this.initializeAudio();
+        if (!this.sfxEnabled) return;
+
+        // Rate limit duplicate sounds to prevent overpowering audio
+        const now = this.ctx.currentTime;
+        if (!this.soundPools[type]) {
+            this.soundPools[type] = [];
+        }
+
+        // Remove old sounds from pool
+        this.soundPools[type] = this.soundPools[type].filter(t => now - t < 0.1);
+
+        // Max 3 of same sound in last 0.1 seconds
+        if (this.soundPools[type].length >= 3) return;
+        this.soundPools[type].push(now);
+
+        const osc = this.ctx.createOscillator();
+        const gainNode = this.ctx.createGain();
+
+        osc.connect(gainNode);
+        gainNode.connect(this.sfxGain);
+
+        // Slightly vary pitch
+        const detune = (Math.random() - 0.5) * 100;
+        osc.detune.value = detune;
+
+        let duration = 0.1;
+
+        switch(type) {
+            case 'throw':
+                if (weaponId === 'steel_star') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(1000, now);
+                    osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+                } else if (weaponId === 'fire_star') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                    duration = 0.2;
+                } else if (weaponId === 'lightning_star') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(1200, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                    osc.frequency.linearRampToValueAtTime(2000, now + 0.2);
+                    duration = 0.2;
+                } else if (weaponId === 'shadow_blade') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+                    duration = 0.3;
+                } else {
+                    // Basic Shuriken
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+                }
+
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+                break;
+
+            case 'hit':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'critical_hit':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gainNode.gain.setValueAtTime(0.25, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                duration = 0.1;
+                break;
+
+            case 'break_wood':
+            case 'break_stone':
+            case 'break':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(type === 'break_wood' ? 100 : 80, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                duration = 0.2;
+                break;
+
+            case 'break_crystal':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1200, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                duration = 0.1;
+                break;
+
+            case 'metal_impact':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'coin':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1200, now);
+                osc.frequency.setValueAtTime(1500, now + 0.05);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+                duration = 0.3;
+                break;
+
+            case 'powerup':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.3);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.4);
+                duration = 0.4;
+                break;
+
+            case 'buy':
+            case 'unlock':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.setValueAtTime(600, now + 0.1);
+                osc.frequency.setValueAtTime(800, now + 0.2);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.4);
+                duration = 0.4;
+                break;
+
+            case 'button':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                duration = 0.05;
+                break;
+
+            case 'wave_start':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(600, now + 0.5);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.6);
+                duration = 0.6;
+                break;
+
+            case 'boss_entrance':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.linearRampToValueAtTime(50, now + 1.0);
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.4, now + 0.2);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.2);
+                duration = 1.2;
+                break;
+
+            case 'boss_defeat':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 1.5);
+                gainNode.gain.setValueAtTime(0.4, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.5);
+                duration = 1.5;
+                break;
+
+            case 'pause':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                duration = 0.1;
+                break;
+
+            case 'gameover':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 1.0);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.0);
+                duration = 1.0;
+                break;
+        }
+
+        osc.start(now);
+        osc.stop(now + duration);
+    }
+}
+
+export const audioManager = new AudioManager();
+
+// Wrapper for backwards compatibility in other files
+export function playSound(type, weaponId = null) {
+    audioManager.playSound(type, weaponId);
+}
+export const WEAPONS = [
+    { id: 'ninja_star', name: 'Basic Shuriken', icon: '🥷', damage: 10, power: 100, cost: 0, color: 0x4444ff, shape: 'star', trail: 'blue' },
+    { id: 'steel_star', name: 'Steel Shuriken', icon: '⚙️', damage: 25, power: 150, cost: 50, color: 0xaaaaaa, shape: 'star', trail: 'silver' },
+    { id: 'fire_star', name: 'Fire Shuriken', icon: '🔥', damage: 50, power: 250, cost: 200, color: 0xff4400, shape: 'star', trail: 'orange' },
+    { id: 'lightning_star', name: 'Lightning Shuriken', icon: '⚡', damage: 80, power: 400, cost: 500, color: 0x00ffff, shape: 'star', trail: 'cyan' },
+    { id: 'shadow_blade', name: 'Shadow Blade', icon: '🌑', damage: 150, power: 600, cost: 1000, color: 0x8800ff, shape: 'katana', trail: 'purple' }
+];
+
+export const MATERIALS = [
+    { name: 'Wooden Crate', hp: 30, color: 0x8b4513, score: 10, coins: 1, shape: 'box' },
+    { name: 'Barrel', hp: 60, color: 0x5c4033, score: 20, coins: 2, shape: 'cylinder' },
+    { name: 'Stone Block', hp: 150, color: 0x888888, score: 40, coins: 5, shape: 'box' },
+    { name: 'Target Dummy', hp: 300, color: 0xddaa77, score: 80, coins: 10, shape: 'cylinder' },
+    { name: 'Crystal Block', hp: 600, color: 0x00ffff, score: 150, coins: 20, shape: 'dodecahedron' },
+    { name: 'BOSS', hp: 2000, color: 0xff0000, score: 500, coins: 50, shape: 'boss' }
+];
+
+export const POWERUPS = [
+    { type: 'coin', name: 'Golden Crate', color: 0xffd700, shape: 'box' },
+    { type: 'damage', name: 'Red Target', color: 0xff0000, shape: 'cylinder' },
+    { type: 'slow', name: 'Blue Target', color: 0x0000ff, shape: 'cylinder' }
+];
+
+export const STATES = {
+    START: 0,
+    PLAYING: 1,
+    GAMEOVER: 2,
+    SHOP: 3,
+    PAUSED: 4
+};
+import { initScene } from './SceneManager.js';
+import { updateUIDisplay, renderShop, switchScreen, handleStateChangeUI, showRestartConfirmMenu, showQuitConfirmMenu, resetPauseMenuUI, showSettingsMenu, hideSettingsMenu } from './UIManager.js';
+import { audioManager } from './audio.js';
+import { createRun, resetGameUI, handleGameOver, safelyClearRun } from './GameManager.js';
+import { WEAPONS, MATERIALS, POWERUPS, STATES } from './constants.js';
+import { playSound } from './audio.js';
+import { stateManager } from './StateManager.js';
+
+// --- GLOBAL VARIABLES ---
+
+// Three.js
+let scene, camera, renderer;
+let lane, weaponMesh;
+let activeObjects = [];
+let particles = [];
+let projectiles = [];
+let clock = new THREE.Clock();
+
+// Input / Aiming
+let aim = { x: 0, y: 0 }; // Normalized device coordinates (-1 to +1)
+let isDragging = false;
+
+// Game State
+let run = {};
+let playerData = {
+    coins: 0,
+    bestScore: 0,
+    unlockedWeapons: ['ninja_star'],
+    selectedWeaponId: 'ninja_star',
+    settings: null // Will be initialized correctly by loadData to avoid duplicated code
+};
+
+function init() {
+    loadData();
+    applyAudioSettings();
+    stateManager.subscribe((newState) => {
+        handleStateChangeUI(newState, switchScreen);
+
+        if (newState === STATES.START) {
+            audioManager.playMusic('menu');
+        } else if (newState === STATES.PLAYING) {
+            audioManager.playMusic('gameplay');
+        } else if (newState === STATES.GAMEOVER) {
+            audioManager.playMusic('gameover');
+        } else if (newState === STATES.SHOP) {
+            audioManager.playMusic('shop');
+            document.getElementById('shop-coins').innerText = playerData.coins;
+            renderShop(playerData, window.selectWeapon, window.buyWeapon);
+        } else if (newState === STATES.PAUSED) {
+            audioManager.pauseMusic();
+        }
+
+    });
+    const sceneData = initScene();
+    scene = sceneData.scene;
+    camera = sceneData.camera;
+    renderer = sceneData.renderer;
+    lane = sceneData.lane;
+
+    updateUIDisplay(playerData);
+    renderShop(playerData, window.selectWeapon, window.buyWeapon);
+    bindEvents();
+
+    // Start render loop
+    renderer.setAnimationLoop(gameLoop);
+}
+
+function bindEvents() {
+    bindMobileControls();
+    document.getElementById('play-btn').addEventListener('click', startGame);
+    document.getElementById('retry-btn').addEventListener('click', startGame);
+
+    document.getElementById('shop-btn-start').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.START);
+    });
+    document.getElementById('shop-btn-go').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.GAMEOVER);
+    });
+    document.getElementById('shop-btn-pause').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.openShop(STATES.PAUSED);
+    });
+    document.getElementById('shop-exit-button').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stateManager.closeShop();
+    });
+
+    // In-game buttons
+    document.getElementById('pause-btn').addEventListener('click', togglePause);
+    document.getElementById('resume-btn').addEventListener('click', togglePause);
+
+    // Pause menu confirmation bindings
+    document.getElementById('confirm-restart-btn').addEventListener('click', showRestartConfirmMenu);
+    document.getElementById('cancel-restart-btn').addEventListener('click', resetPauseMenuUI);
+
+    document.getElementById('do-restart-btn').addEventListener('click', () => {
+        safelyClearRun(scene, activeObjects, projectiles, particles);
+        activeObjects = [];
+        projectiles = [];
+        particles = [];
+        startGame();
+    });
+
+    document.getElementById('confirm-quit-btn').addEventListener('click', showQuitConfirmMenu);
+    document.getElementById('cancel-quit-btn').addEventListener('click', resetPauseMenuUI);
+    bindAudioSettingsUI();
+    document.getElementById('do-quit-btn').addEventListener('click', () => {
+        safelyClearRun(scene, activeObjects, projectiles, particles);
+        activeObjects = [];
+        projectiles = [];
+        particles = [];
+        stateManager.changeState(STATES.START);
+    });
+
+    // Keyboard Pause Controls
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (stateManager.getState() === STATES.SHOP) {
+                stateManager.closeShop();
+            } else {
+                togglePause();
+            }
+        } else if (e.key.toLowerCase() === 'p') {
+            togglePause();
+        }
+    });
+
+    // Auto-pause when tab is hidden
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && stateManager.getState() === STATES.PLAYING) {
+            stateManager.changeState(STATES.PAUSED);
+        }
+    });
+}
+
+function togglePause() {
+    if(stateManager.getState() === STATES.PLAYING) {
+        audioManager.playSound('pause');
+        stateManager.changeState(STATES.PAUSED);
+    } else if (stateManager.getState() === STATES.PAUSED) {
+        audioManager.resumeMusic();
+        stateManager.changeState(STATES.PLAYING);
+    }
+}
+
+
+function applyAudioSettings() {
+    audioManager.setMasterVolume(playerData.settings.masterVolume);
+    audioManager.setMusicVolume(playerData.settings.musicVolume);
+    audioManager.setEffectsVolume(playerData.settings.sfxVolume);
+    audioManager.setMusicEnabled(playerData.settings.musicEnabled);
+    audioManager.setEffectsEnabled(playerData.settings.sfxEnabled);
+
+    document.getElementById('master-vol').value = playerData.settings.masterVolume;
+    document.getElementById('music-vol').value = playerData.settings.musicVolume;
+    document.getElementById('sfx-vol').value = playerData.settings.sfxVolume;
+    document.getElementById('music-toggle').checked = playerData.settings.musicEnabled;
+    document.getElementById('sfx-toggle').checked = playerData.settings.sfxEnabled;
+    document.getElementById('mobile-controls-toggle').checked = playerData.settings.touchControls;
+
+    updateTouchControlsVisibility();
+}
+
+function bindAudioSettingsUI() {
+    document.getElementById('settings-btn').addEventListener('click', showSettingsMenu);
+    document.getElementById('close-settings-btn').addEventListener('click', () => {
+        hideSettingsMenu();
+        saveData();
+    });
+
+    document.getElementById('master-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.masterVolume = val;
+        audioManager.setMasterVolume(val);
+    });
+
+    document.getElementById('music-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.musicVolume = val;
+        audioManager.setMusicVolume(val);
+    });
+
+    document.getElementById('sfx-vol').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        playerData.settings.sfxVolume = val;
+        audioManager.setEffectsVolume(val);
+    });
+
+    document.getElementById('music-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.musicEnabled = val;
+        audioManager.setMusicEnabled(val);
+    });
+
+    document.getElementById('sfx-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.sfxEnabled = val;
+        audioManager.setEffectsEnabled(val);
+    });
+
+    document.getElementById('mobile-controls-toggle').addEventListener('change', (e) => {
+        const val = e.target.checked;
+        playerData.settings.touchControls = val;
+        updateTouchControlsVisibility();
+    });
+}
+
+
+function bindMobileControls() {
+    const throwBtn = document.getElementById('mobile-throw-btn');
+    if (throwBtn) {
+        let autofireInterval = null;
+
+        throwBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            throwProjectile();
+            autofireInterval = setInterval(throwProjectile, 150);
+        });
+
+        throwBtn.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            if (autofireInterval) {
+                clearInterval(autofireInterval);
+                autofireInterval = null;
+            }
+        });
+
+        throwBtn.addEventListener('pointercancel', (e) => {
+            e.preventDefault();
+            if (autofireInterval) {
+                clearInterval(autofireInterval);
+                autofireInterval = null;
+            }
+        });
+    }
+
+    const dpadMap = {
+        'dpad-up': 'ArrowUp',
+        'dpad-down': 'ArrowDown',
+        'dpad-left': 'ArrowLeft',
+        'dpad-right': 'ArrowRight'
+    };
+
+    Object.keys(dpadMap).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = true;
+                btn.classList.add('active');
+            });
+            btn.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+            btn.addEventListener('pointercancel', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+            btn.addEventListener('pointerleave', (e) => {
+                e.preventDefault();
+                keys[dpadMap[id]] = false;
+                btn.classList.remove('active');
+            });
+        }
+    });
+}
+
+function updateTouchControlsVisibility() {
+    const area = document.getElementById('mobile-controls-container');
+    if (area) {
+        if (playerData.settings.touchControls) {
+            area.classList.remove('hidden');
+        } else {
+            area.classList.add('hidden');
+        }
+    }
+}
+
+const DEFAULT_SETTINGS = {
+    shake: true,
+    move: true,
+    masterVolume: 0.7,
+    musicVolume: 0.45,
+    sfxVolume: 0.75,
+    musicEnabled: true,
+    sfxEnabled: true,
+    touchControls: ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+};
+
+function loadData() {
+    const saved = localStorage.getItem('ninjaStarBreaker3D');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            // Deep merge to ensure all settings keys exist, keeping parsed ones
+            playerData = { ...playerData, ...parsed };
+
+            if (!playerData.settings) {
+                playerData.settings = { ...DEFAULT_SETTINGS };
+            } else {
+                playerData.settings = { ...DEFAULT_SETTINGS, ...playerData.settings };
+            }
+        } catch (e) {
+            console.error("Failed to parse save data", e);
+            // Reset to defaults if corrupted
+            playerData.settings = { ...DEFAULT_SETTINGS };
+        }
+    } else {
+        playerData.settings = { ...DEFAULT_SETTINGS };
+    }
+}
+
+function saveData() {
+    localStorage.setItem('ninjaStarBreaker3D', JSON.stringify(playerData));
+}
+
+
+// --- INPUT STATE ---
+const keys = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false,
+    w: false,
+    s: false,
+    a: false,
+    d: false
+};
+
+window.addEventListener('keydown', (e) => {
+    if (stateManager.getState() === STATES.PLAYING) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            e.preventDefault(); // Prevent scrolling
+        }
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            throwProjectile();
+        }
+    }
+
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = true;
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = false;
+    }
+});
+
+function updateAimFromInput(delta) {
+    if (stateManager.getState() !== STATES.PLAYING) return;
+
+    const aimSpeed = 2.0; // adjust sensitivity
+
+    let dx = 0;
+    let dy = 0;
+
+    if (keys.ArrowLeft || keys.a) dx -= 1;
+    if (keys.ArrowRight || keys.d) dx += 1;
+    if (keys.ArrowUp || keys.w) dy += 1;
+    if (keys.ArrowDown || keys.s) dy -= 1;
+
+    // Normalize diagonal movement
+    if (dx !== 0 && dy !== 0) {
+        const length = Math.sqrt(dx * dx + dy * dy);
+        dx /= length;
+        dy /= length;
+    }
+
+    aim.x += dx * aimSpeed * delta;
+    aim.y += dy * aimSpeed * delta;
+
+    // Clamp
+    aim.x = Math.max(-1, Math.min(1, aim.x));
+    aim.y = Math.max(-1, Math.min(1, aim.y));
+
+    // Update visual crosshair
+    const crosshair = document.querySelector('.crosshair');
+    if (crosshair) {
+        // Map -1..1 to 0..100%
+        const xPos = ((aim.x + 1) / 2) * 100;
+        const yPos = ((-aim.y + 1) / 2) * 100;
+        crosshair.style.left = `${xPos}%`;
+        crosshair.style.top = `${yPos}%`;
+    }
+}
+
+// --- MODELS & SHAPES ---
+
+function createWeaponMesh(weaponData) {
+    if (weaponMesh) {
+        scene.remove(weaponMesh);
+        weaponMesh.geometry.dispose();
+        weaponMesh.material.dispose();
+    }
+
+    let geometry;
+    const material = new THREE.MeshStandardMaterial({
+        color: weaponData.color,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+
+    switch(weaponData.shape) {
+        case 'star':
+            // Simple 4-point star using cylinder with 4 radial segments
+            geometry = new THREE.CylinderGeometry(0.01, 1, 0.2, 4);
+            break;
+        case 'knife':
+            geometry = new THREE.BoxGeometry(0.2, 2, 0.5);
+            break;
+        case 'axe':
+            geometry = new THREE.BoxGeometry(1.5, 0.2, 1);
+            break;
+        case 'sword':
+            geometry = new THREE.BoxGeometry(0.3, 3, 0.1);
+            break;
+        case 'katana':
+            geometry = new THREE.CylinderGeometry(0.1, 0.2, 4, 8);
+            break;
+        default:
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+    }
+
+    weaponMesh = new THREE.Mesh(geometry, material);
+    weaponMesh.position.set(0, 1.5, 0); // Start position
+    scene.add(weaponMesh);
+
+    return weaponMesh;
+}
+
+// --- GAME STATE FLOW ---
+
+function startGame() {
+    stateManager.changeState(STATES.PLAYING);
+
+    const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
+    run = createRun(weaponData);
+
+    resetGameUI(weaponData);
+
+    // Setup Scene
+    createWeaponMesh(weaponData);
+    weaponMesh.position.set(0, 1.5, 0);
+    camera.position.set(0, 5, 10);
+
+    // Clear old objects
+    activeObjects.forEach(obj => scene.remove(obj.mesh));
+    activeObjects = [];
+
+    // Spawn initial objects
+    for(let i=0; i<3; i++) {
+        spawnObject(-40 - (i * 20));
+    }
+}
+
+function gameOver() {
+    const newState = handleGameOver(run, playerData, playSound);
+    stateManager.changeState(newState);
+    saveData();
+    updateUIDisplay(playerData);
+}
+
+// --- SHOP ---
+
+// Navigation is now handled through StateManager directly
+// To ensure the UI displays correctly when entering shop, we still need to render
+// This is handled partly by UIManager now, but we need to ensure shop is populated
+// when we enter it.
+// stateManager.subscribe already handles hiding/showing screens, but we need to hook into it
+// to update shop-coins and renderShop when we transition TO shop.
+// We can modify the subscription in init()
+
+// --- PROJECTILE SYSTEM ---
+
+function throwProjectile() {
+    if (run.power <= 0 || stateManager.getState() !== STATES.PLAYING) return;
+
+    playSound('throw', playerData.selectedWeaponId);
+
+    const weaponData = WEAPONS.find(w => w.id === playerData.selectedWeaponId);
+
+    // Reduce power slightly for throwing
+    run.power -= 2;
+
+    // Create a projectile mesh identical to weapon mesh
+    const projMesh = weaponMesh.clone();
+    projMesh.material = weaponMesh.material.clone(); // so we can manipulate opacity if needed
+
+    // Raycast to find target world position based on screen aim
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(aim, camera);
+
+    // We want the projectile to travel forward but angled towards where user tapped.
+    // Let's create a plane far away and intersect it.
+    const targetPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 100);
+    const targetPoint = new THREE.Vector3();
+    raycaster.ray.intersectPlane(targetPlane, targetPoint);
+
+    // Calculate direction from camera to target
+    const direction = new THREE.Vector3().subVectors(targetPoint, camera.position).normalize();
+
+    // Start slightly in front of camera
+    projMesh.position.copy(camera.position);
+    projMesh.position.y -= 1; // Start a bit lower
+
+    scene.add(projMesh);
+
+    projectiles.push({
+        mesh: projMesh,
+        direction: direction,
+        speed: 150,
+        damage: weaponData.damage * run.damageMultiplier,
+        life: 2.0, // seconds
+        color: weaponData.color,
+        trailColor: getTrailColor(weaponData.trail)
+    });
+}
+
+function getTrailColor(trailName) {
+    switch(trailName) {
+        case 'blue': return 0x4444ff;
+        case 'silver': return 0xaaaaaa;
+        case 'orange': return 0xffaa00;
+        case 'cyan': return 0x00ffff;
+        case 'purple': return 0xaa00ff;
+        default: return 0xffffff;
+    }
+}
+
+function spawnObject(zPos) {
+    let objData;
+    let isBoss = false;
+    let isPowerup = false;
+
+    // Check for Boss Wave
+    if (run.objectsBroken > 0 && run.objectsBroken % 15 === 0) {
+        // Every 15 objects is a "Wave", spawn Boss
+        objData = MATERIALS.find(m => m.name === 'BOSS');
+        isBoss = true;
+        run.wave++;
+        document.getElementById('ui-wave').innerText = run.wave;
+
+        // Show boss warning
+        const warning = document.getElementById('boss-warning');
+        warning.classList.remove('hidden');
+        setTimeout(() => warning.classList.add('hidden'), 2000);
+
+        // Increase base speed slightly every wave
+        run.speed = Math.min(80, 40 + (run.wave * 2));
+        audioManager.fadeToMusic('boss');
+        audioManager.playSound('boss_entrance');
+
+    } else if (Math.random() < 0.1) {
+        // 10% chance for powerup
+        isPowerup = true;
+        objData = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+    } else {
+        // Random normal material (excluding boss)
+        const normalMats = MATERIALS.filter(m => m.name !== 'BOSS');
+        // Weight selection based on wave (later waves = harder mats)
+        const maxMatIndex = Math.min(normalMats.length - 1, Math.floor(run.wave / 2));
+        objData = normalMats[Math.floor(Math.random() * (maxMatIndex + 1))];
+    }
+
+    let geometry;
+    switch(objData.shape) {
+        case 'box': geometry = new THREE.BoxGeometry(2, 2, 2); break;
+        case 'cylinder': geometry = new THREE.CylinderGeometry(1, 1, 2, 16); break;
+        case 'dodecahedron': geometry = new THREE.DodecahedronGeometry(1.5); break;
+        case 'boss': geometry = new THREE.OctahedronGeometry(4); break;
+        default: geometry = new THREE.BoxGeometry(2, 2, 2);
+    }
+
+    const material = new THREE.MeshStandardMaterial({
+        color: objData.color,
+        roughness: 0.7,
+        metalness: 0.1
+    });
+
+    if(isBoss) {
+        material.emissive = new THREE.Color(0x330000);
+        material.emissiveIntensity = 0.5;
+    }
+
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Random X position within lane (-10 to 10)
+    mesh.position.x = (Math.random() - 0.5) * 20;
+    mesh.position.y = isBoss ? 4 : 1;
+    mesh.position.z = zPos;
+
+    if(isBoss) mesh.castShadow = true;
+
+    scene.add(mesh);
+
+    activeObjects.push({
+        mesh: mesh,
+        data: objData,
+        hp: objData.hp,
+        maxHp: objData.hp,
+        z: zPos,
+        x: mesh.position.x,
+        isBoss: isBoss,
+        isPowerup: isPowerup
+    });
+}
+
+function createBreakParticles(position, color) {
+    const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const material = new THREE.MeshBasicMaterial({ color: color });
+
+    for (let i = 0; i < 20; i++) {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+        mesh.position.x += (Math.random() - 0.5) * 2;
+        mesh.position.y += (Math.random() - 0.5) * 2;
+        scene.add(mesh);
+
+        particles.push({
+            mesh: mesh,
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 15,
+                Math.random() * 15,
+                (Math.random() - 0.5) * 15
+            ),
+            life: 1.0
+        });
+    }
+}
+
+// Camera Shake
+let shakeTime = 0;
+let shakeMagnitude = 0;
+
+function applyCameraShake(magnitude, time) {
+    if (playerData.settings.shake) {
+        shakeMagnitude = magnitude;
+        shakeTime = time;
+    }
+}
+
+// --- MAIN LOOP ---
+
+function gameLoop() {
+    const delta = clock.getDelta();
+
+
+    if (stateManager.getState() === STATES.PLAYING) {
+        updateAimFromInput(delta);
+        updateGameplay(delta);
+
+
+        // Update Particles (only while playing)
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.life -= delta;
+
+            if (p.life <= 0) {
+                scene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+                particles.splice(i, 1);
+            } else {
+                p.mesh.position.addScaledVector(p.velocity, delta);
+                if(p.hasGravity) p.velocity.y -= 20 * delta; // Gravity
+                p.mesh.rotation.x += delta * 10;
+                p.mesh.rotation.y += delta * 10;
+                p.mesh.scale.setScalar(p.life / p.maxLife);
+            }
+        }
+    }
+
+    // Apply Camera Shake (can still happen during other states like gameover)
+    if (shakeTime > 0) {
+        shakeTime -= delta;
+        const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * shakeMagnitude,
+            (Math.random() - 0.5) * shakeMagnitude,
+            0
+        );
+        camera.position.add(offset);
+        // Will be roughly reset by follow logic in updateGameplay
+    }
+
+    renderer.render(scene, camera);
+}
+
+function updateGameplay(delta) {
+    if (run.power <= 0) {
+        gameOver();
+        return;
+    }
+
+    // Update Projectiles
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        let proj = projectiles[i];
+        proj.life -= delta;
+
+        if (proj.life <= 0) {
+            scene.remove(proj.mesh);
+            proj.mesh.geometry.dispose();
+            proj.mesh.material.dispose();
+            projectiles.splice(i, 1);
+            continue;
+        }
+
+        // Move projectile
+        proj.mesh.position.addScaledVector(proj.direction, proj.speed * delta);
+        proj.mesh.rotation.x += 10 * delta;
+        proj.mesh.rotation.z += 20 * delta;
+
+        // Add trail particles
+        if(Math.random() > 0.5) {
+            createParticle(proj.mesh.position, proj.trailColor, 0.5, false);
+        }
+
+        // Check Collision with active objects
+        for (let j = 0; j < activeObjects.length; j++) {
+            let target = activeObjects[j];
+            let dist = proj.mesh.position.distanceTo(target.mesh.position);
+
+            let collisionRadius = target.isBoss ? 4 : 2;
+
+            if (dist < collisionRadius) {
+                // Hit!
+                playSound('hit');
+                createParticle(proj.mesh.position, proj.trailColor, 1.0, true, 5); // Sparks
+
+                if (target.isPowerup) {
+                    target.hp = 0;
+                    applyPowerup(target.data.type);
+                    showFloatingText(target.data.name, 'score');
+                    playSound('coin');
+                } else {
+                    target.hp -= proj.damage;
+                    target.mesh.position.x = target.x + (Math.random() - 0.5) * 0.5; // Shake
+                }
+
+                // Check Destroy
+                if (target.hp <= 0) {
+                    playSound('break_wood');
+                    createBreakParticles(target.mesh.position, target.data.color);
+                    applyCameraShake(target.isBoss ? 1.0 : 0.4, 0.2);
+
+                    if (!target.isPowerup) {
+                        run.combo++;
+                        run.comboTimer = 2.0;
+                        if (run.combo > 1) {
+                            const comboDisplay = document.getElementById('combo-display');
+                            comboDisplay.classList.remove('hidden');
+                            document.getElementById('ui-combo').innerText = run.combo;
+                        }
+                    }
+
+                    const comboMult = Math.max(1, run.combo);
+                    const scoreGained = (target.data.score || 0) * comboMult;
+                    const coinsGained = target.data.coins || 0;
+
+                    run.score += scoreGained;
+                    run.coins += coinsGained;
+                    run.objectsBroken++;
+
+                    if (scoreGained > 0) showFloatingText(`+${scoreGained}`, 'score');
+                    if (coinsGained > 0) {
+                        setTimeout(() => showFloatingText(`+${coinsGained} Coins`, 'coin'), 200);
+                        if(coinsGained > 1) playSound('coin');
+                    }
+
+                    document.getElementById('ui-score').innerText = run.score;
+                    document.getElementById('ui-coins').innerText = run.coins;
+
+                    scene.remove(target.mesh);
+                    target.mesh.geometry.dispose();
+                    target.mesh.material.dispose();
+                    activeObjects.splice(j, 1);
+                }
+
+                // Remove Projectile
+                scene.remove(proj.mesh);
+                proj.mesh.geometry.dispose();
+                proj.mesh.material.dispose();
+                projectiles.splice(i, 1);
+                break; // Stop checking this projectile against other objects
+            }
+        }
+    }
+
+    // Handle Powerups timer
+    if (run.powerupTimer > 0) {
+        run.powerupTimer -= delta;
+        if (run.powerupTimer <= 0) {
+            run.damageMultiplier = 1;
+            run.speedMultiplier = 1;
+        }
+    }
+
+    // Handle Combo timer
+    if (run.combo > 0) {
+        run.comboTimer -= delta;
+        if (run.comboTimer <= 0) {
+            run.combo = 0;
+            document.getElementById('combo-display').classList.add('hidden');
+        }
+    }
+
+    // Advance world (objects move towards player now, since we throw projectiles)
+    const currentSpeed = run.speed * run.speedMultiplier;
+
+    // Spawn objects periodically instead of waiting for break
+    if(activeObjects.length === 0 || activeObjects[activeObjects.length -1].z > -100) {
+        const lastZ = activeObjects.length > 0 ? activeObjects[activeObjects.length - 1].z : -50;
+        spawnObject(lastZ - (40 + Math.random() * 20));
+    }
+
+    // Move objects towards camera
+    for (let i = activeObjects.length - 1; i >= 0; i--) {
+        let obj = activeObjects[i];
+        obj.z += currentSpeed * delta;
+        obj.mesh.position.z = obj.z;
+
+        // If object passed player, remove it and penalize power
+        if (obj.z > 10) {
+            if (!obj.isPowerup) {
+                run.power -= obj.hp * 0.2; // Lose power for missing
+                run.combo = 0; // Reset combo
+                document.getElementById('combo-display').classList.add('hidden');
+                showFloatingText("Miss!", "damage");
+            }
+            scene.remove(obj.mesh);
+            obj.mesh.geometry.dispose();
+            obj.mesh.material.dispose();
+            activeObjects.splice(i, 1);
+        }
+    }
+
+    // Bobbing animation for held weapon mesh
+    weaponMesh.position.copy(camera.position);
+    weaponMesh.position.x += 1.5; // Bottom right corner
+    weaponMesh.position.y -= 1.5;
+    weaponMesh.position.z -= 3;
+
+    weaponMesh.rotation.z += 1 * delta;
+    weaponMesh.rotation.y += 0.5 * delta;
+
+    // Extend Lane towards camera to simulate movement
+    lane.position.z += currentSpeed * delta;
+    if (lane.position.z > 0) {
+        lane.position.z -= 400;
+    }
+
+    // Update UI Power Bar
+    const powerPercent = Math.max(0, (run.power / run.maxPower) * 100);
+    document.getElementById('power-bar-fill').style.width = `${powerPercent}%`;
+}
+
+function createParticle(position, color, life, hasGravity, count = 1) {
+    const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+    const material = new THREE.MeshBasicMaterial({ color: color });
+
+    for (let i = 0; i < count; i++) {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+        mesh.position.x += (Math.random() - 0.5) * 0.5;
+        mesh.position.y += (Math.random() - 0.5) * 0.5;
+        scene.add(mesh);
+
+        particles.push({
+            mesh: mesh,
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 10,
+                (Math.random() - 0.5) * 10,
+                (Math.random() - 0.5) * 10
+            ),
+            life: life,
+            maxLife: life,
+            hasGravity: hasGravity
+        });
+    }
+
+}
+
+function applyPowerup(type) {
+    switch(type) {
+        case 'coin':
+            run.coins += 25;
+            break;
+        case 'damage':
+            run.damageMultiplier = 2.0;
+            run.powerupTimer = 5.0; // 5 seconds
+            break;
+        case 'slow':
+            run.speedMultiplier = 0.5;
+            run.powerupTimer = 5.0; // 5 seconds
+            break;
+    }
+}
+
+function showFloatingText(text, typeClass) {
+    const container = document.getElementById('floating-text-container');
+    const el = document.createElement('div');
+    el.className = `floating-text ${typeClass}`;
+    el.innerText = text;
+
+    // Randomize position slightly near center
+    const x = 50 + (Math.random() - 0.5) * 20;
+    const y = 50 + (Math.random() - 0.5) * 20;
+
+    el.style.left = `${x}%`;
+    el.style.top = `${y}%`;
+
+    container.appendChild(el);
+
+    // Remove after animation completes
+    setTimeout(() => {
+        if(container.contains(el)) {
+            container.removeChild(el);
+        }
+    }, 1000);
+}
+
+window.selectWeapon = function(weaponId) {
+    if (playerData.unlockedWeapons.includes(weaponId)) {
+        playSound('buy');
+        playerData.selectedWeaponId = weaponId;
+        saveData();
+        renderShop(playerData, window.selectWeapon, window.buyWeapon);
+    }
+}
+
+window.buyWeapon = function(weaponId, cost) {
+    if (playerData.coins >= cost && !playerData.unlockedWeapons.includes(weaponId)) {
+        playSound('buy');
+        playerData.coins -= cost;
+        playerData.unlockedWeapons.push(weaponId);
+        playerData.selectedWeaponId = weaponId;
+        saveData();
+        renderShop(playerData, window.selectWeapon, window.buyWeapon);
+    }
+}
+
+// Start everything when DOM is ready
+window.onload = init;
+/* Global Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Courier New', Courier, monospace;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    overflow: hidden;
+    color: #fff;
+}
+
+/* Container */
+#game-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+/* UI Screens */
+.screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    text-align: center;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Typography */
+.neon-title {
+    font-size: 3rem;
+    color: #fff;
+    text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+    margin-bottom: 20px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.neon-title.small {
+    font-size: 2rem;
+}
+
+#version-label {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    font-size: 0.8rem;
+    color: #555;
+}
+
+.neon-title.text-danger {
+    text-shadow: 0 0 10px #f00, 0 0 20px #f00;
+}
+
+.tutorial-text {
+    font-size: 1.1rem;
+    color: #aaa;
+    margin-bottom: 30px;
+    max-width: 400px;
+    line-height: 1.5;
+}
+
+.stats-container {
+    margin-bottom: 30px;
+    font-size: 1.2rem;
+    color: #0ff;
+}
+
+.stats-container.large {
+    font-size: 1.5rem;
+    line-height: 1.8;
+}
+
+/* Buttons */
+.neon-button {
+    background: transparent;
+    color: #0ff;
+    border: 2px solid #0ff;
+    padding: 15px 40px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 5px;
+    box-shadow: 0 0 10px #0ff inset, 0 0 10px #0ff;
+    transition: all 0.2s ease;
+    margin: 10px;
+    width: 80%;
+    max-width: 300px;
+}
+
+.neon-button:hover, .neon-button:active {
+    background: #0ff;
+    color: #000;
+    box-shadow: 0 0 20px #0ff inset, 0 0 20px #0ff;
+}
+
+.neon-button.secondary {
+    border-color: #f0f;
+    color: #f0f;
+    box-shadow: 0 0 10px #f0f inset, 0 0 10px #f0f;
+    font-size: 1.2rem;
+    padding: 10px 30px;
+}
+
+.neon-button.secondary:hover, .neon-button.secondary:active {
+    background: #f0f;
+    color: #000;
+    box-shadow: 0 0 20px #f0f inset, 0 0 20px #f0f;
+}
+
+/* Game UI Overlay */
+#game-ui {
+    background: none;
+    justify-content: flex-start;
+    padding-top: 20px;
+    pointer-events: none; /* Let clicks pass through to canvas */
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 600px;
+    padding: 10px 20px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #0ff;
+    border-radius: 10px;
+    box-shadow: 0 0 10px #0ff;
+    margin-bottom: 10px;
+    z-index: 20;
+}
+
+.stat-box {
+    font-size: 1.2rem;
+    color: #fff;
+    text-shadow: 0 0 5px #0ff;
+}
+
+.game-controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 20;
+    pointer-events: auto;
+}
+
+.hud-btn {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #0ff;
+    color: #fff;
+    font-size: 1.5rem;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 0 5px #0ff;
+}
+
+.hud-btn:hover {
+    background: rgba(0, 255, 255, 0.3);
+}
+
+.weapon-info {
+    font-size: 1.2rem;
+    color: #f0f;
+    text-shadow: 0 0 5px #f0f;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+/* Power Bar */
+#power-bar-container {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 400px;
+    z-index: 20;
+}
+
+#power-bar-fill {
+    height: 15px;
+    width: 100%;
+    background: linear-gradient(90deg, #f00, #ff0, #0f0);
+    border: 2px solid #fff;
+    border-radius: 7px;
+    box-shadow: 0 0 10px #0f0;
+}
+
+.crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 2rem;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#mobile-control-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5; /* Below buttons, above canvas */
+    pointer-events: auto;
+}
+
+/* Floating Effects */
+#floating-text-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 30;
+}
+
+.floating-text {
+    position: absolute;
+    color: #fff;
+    font-weight: bold;
+    font-size: 1.5rem;
+    pointer-events: none;
+    animation: floatUp 1s ease-out forwards;
+}
+
+.floating-text.score { color: #0f0; text-shadow: 0 0 5px #0f0; }
+.floating-text.coin { color: #ff0; text-shadow: 0 0 5px #ff0; }
+.floating-text.damage { color: #f00; text-shadow: 0 0 5px #f00; }
+
+@keyframes floatUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
+}
+
+#combo-display {
+    position: absolute;
+    top: 30%;
+    font-size: 3rem;
+    color: #ff0;
+    text-shadow: 0 0 15px #ff0, 0 0 30px #f80;
+    font-weight: bold;
+    animation: pulse 0.5s infinite alternate;
+    z-index: 20;
+}
+
+#boss-warning {
+    position: absolute;
+    top: 40%;
+    font-size: 4rem;
+    color: #f00;
+    text-shadow: 0 0 20px #f00, 0 0 40px #f00;
+    font-weight: bold;
+    animation: pulseFlash 0.3s infinite alternate;
+    z-index: 20;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.2); }
+}
+
+@keyframes pulseFlash {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.1); opacity: 1; color: #fff;}
+}
+
+/* Shop */
+#shop-screen {
+    justify-content: flex-start;
+    padding-top: 40px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    pointer-events: auto;
+}
+
+.shop-actions {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin-top: 24px;
+    padding: 16px 0 max(16px, env(safe-area-inset-bottom));
+}
+
+#shop-exit-button {
+    min-width: 44px;
+    min-height: 44px;
+    width: auto;
+}
+
+#shop-exit-button:focus {
+    outline: 2px solid #fff;
+    outline-offset: 4px;
+}
+
+.coins-display {
+    font-size: 1.5rem;
+    color: #ff0;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px #ff0;
+}
+
+.weapons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    width: 100%;
+    max-width: 800px;
+    margin-bottom: 30px;
+}
+
+.weapon-card {
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.2s;
+}
+
+.weapon-card.unlocked {
+    border-color: #0ff;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.weapon-card.selected {
+    border-color: #f0f;
+    box-shadow: 0 0 15px #f0f;
+    transform: scale(1.05);
+}
+
+.weapon-card:hover {
+    transform: translateY(-5px);
+}
+
+.weapon-icon {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+.weapon-name {
+    font-size: 1rem;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #fff;
+}
+
+.weapon-stats {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-bottom: 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.weapon-action-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 5px;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+}
+
+.btn-buy {
+    background: #ff0;
+    color: #000;
+}
+.btn-buy:disabled {
+    background: #555;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.btn-select {
+    background: #0ff;
+    color: #000;
+}
+
+.btn-selected {
+    background: #f0f;
+    color: #fff;
+    cursor: default;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 600px) {
+    .neon-title { font-size: 2rem; }
+    .neon-button { font-size: 1.2rem; padding: 10px 20px; }
+    .top-bar { font-size: 0.9rem; flex-wrap: wrap; justify-content: center; gap: 10px;}
+    .stat-box { margin: 0 5px; }
+    .weapons-grid { grid-template-columns: repeat(2, 1fr); }
+}
+#settings-menu {
+    background: rgba(0, 0, 0, 0.9);
+    padding: 20px;
+    border: 2px solid #0ff;
+    border-radius: 10px;
+    width: 80%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 1000;
+}
+.settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 80%;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+}
+.settings-row input[type="range"] {
+    width: 50%;
+}
+.settings-row input[type="checkbox"] {
+    transform: scale(1.5);
+}
+
+/* Mobile Controls */
+#mobile-controls-container {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    width: 100%;
+    height: 150px;
+    pointer-events: none;
+    z-index: 20;
+}
+
+#mobile-controls-container.hidden {
+    display: none !important;
+}
+
+#dpad-container {
+    position: absolute;
+    bottom: 10px;
+    left: 20px;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.dpad-row {
+    display: flex;
+    gap: 5px;
+}
+
+.dpad-btn {
+    width: 50px;
+    height: 50px;
+    background: rgba(0, 255, 255, 0.2);
+    border: 2px solid #0ff;
+    color: #fff;
+    font-size: 1.5rem;
+    border-radius: 10px;
+    user-select: none;
+    touch-action: none;
+}
+
+.dpad-btn:active, .dpad-btn.active {
+    background: rgba(0, 255, 255, 0.6);
+}
+
+#mobile-throw-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: rgba(255, 0, 255, 0.2);
+    border: 2px solid #f0f;
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: bold;
+    pointer-events: auto;
+    user-select: none;
+    touch-action: none;
+}
+
+#mobile-throw-btn:active, #mobile-throw-btn.active {
+    background: rgba(255, 0, 255, 0.6);
+}
+
+@media (max-width: 600px) {
+    #dpad-container {
+        left: 5px;
+        bottom: 50px;
+    }
+    #mobile-throw-btn {
+        right: 5px;
+        bottom: 50px;
+        width: 80px;
+        height: 80px;
+        font-size: 1rem;
+    }
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ninja Star Breaker 3D</title>
+    <link rel="stylesheet" href="/src/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="neon-title">Ninja Star Breaker 3D</h1>
+            <div id="version-label">v5.0 3D Fun Shop Update</div>
+            <p class="tutorial-text">Throw your weapon. Break objects. Earn coins. Unlock stronger ninja weapons.</p>
+            <div class="stats-container">
+                <p>Best Score: <span id="best-score-display">0</span></p>
+                <p>Coins: <span id="start-coins-display">0</span></p>
+            </div>
+            <button id="play-btn" class="neon-button">Play</button>
+            <button id="shop-btn-start" class="neon-button secondary">Shop</button>
+        </div>
+
+        <!-- Game UI Overlay (Visible during gameplay) -->
+        <div id="game-ui" class="screen hidden">
+            <div class="top-bar">
+                <div class="stat-box">Wave: <span id="ui-wave">1</span></div>
+                <div class="stat-box">Score: <span id="ui-score">0</span></div>
+                <div class="stat-box">Coins: <span id="ui-coins">0</span></div>
+            </div>
+
+            <div class="game-controls">
+                <button id="pause-btn" class="hud-btn">⏸️</button>
+            </div>
+
+            <div id="combo-display" class="hidden">Combo x<span id="ui-combo">2</span>!</div>
+            <div id="boss-warning" class="hidden">BOSS WAVE!</div>
+            <div id="floating-text-container"></div>
+
+            <div class="crosshair">+</div>
+
+            <div id="power-bar-container">
+                <div class="weapon-info">
+                    <span id="ui-weapon-name">Ninja Star</span>
+                </div>
+                <div id="power-bar-fill"></div>
+            </div>
+
+
+            <div id="mobile-controls-container" class="hidden">
+                <div id="dpad-container">
+                    <button class="dpad-btn" id="dpad-up">▲</button>
+                    <div class="dpad-row">
+                        <button class="dpad-btn" id="dpad-left">◀</button>
+                        <button class="dpad-btn" id="dpad-down">▼</button>
+                        <button class="dpad-btn" id="dpad-right">▶</button>
+                    </div>
+                </div>
+                <button id="mobile-throw-btn">THROW</button>
+            </div>
+
+        </div>
+
+        <!-- Pause Screen -->
+        <div id="pause-screen" class="screen hidden">
+            <div id="pause-main-menu">
+                <h1 class="neon-title">PAUSED</h1>
+                <button id="resume-btn" class="neon-button">Continue Playing</button>
+                <button id="confirm-restart-btn" class="neon-button secondary">Restart Run</button>
+                <button id="shop-btn-pause" class="neon-button secondary">Shop</button>
+                <button id="settings-btn" class="neon-button secondary">Settings</button>
+                <button id="confirm-quit-btn" class="neon-button secondary">Exit to Main Menu</button>
+            </div>
+
+            <div id="restart-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Restart Run?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-restart-btn" class="neon-button text-danger">Yes, Restart</button>
+                <button id="cancel-restart-btn" class="neon-button secondary">Cancel</button>
+            </div>
+
+            <div id="quit-confirm-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Exit Game?</h2>
+                <p>Current wave progress will be lost.</p>
+                <button id="do-quit-btn" class="neon-button text-danger">Yes, Exit</button>
+                <button id="cancel-quit-btn" class="neon-button secondary">Cancel</button>
+            </div>
+
+            <div id="settings-menu" class="hidden confirm-panel">
+                <h2 class="neon-title small">Settings</h2>
+                <div class="settings-row">
+                    <label for="music-toggle">Music</label>
+                    <input type="checkbox" id="music-toggle" checked>
+                </div>
+                <div class="settings-row">
+                    <label for="sfx-toggle">Sound Effects</label>
+                    <input type="checkbox" id="sfx-toggle" checked>
+                </div>
+                <div class="settings-row">
+                    <label for="master-vol">Master Vol</label>
+                    <input type="range" id="master-vol" min="0" max="1" step="0.05" value="0.7">
+                </div>
+                <div class="settings-row">
+                    <label for="music-vol">Music Vol</label>
+                    <input type="range" id="music-vol" min="0" max="1" step="0.05" value="0.45">
+                </div>
+                <div class="settings-row">
+                    <label for="sfx-vol">SFX Vol</label>
+                    <input type="range" id="sfx-vol" min="0" max="1" step="0.05" value="0.75">
+                </div>
+                <div class="settings-row">
+                    <label for="mobile-controls-toggle">Touch Controls</label>
+                    <input type="checkbox" id="mobile-controls-toggle">
+                </div>
+                <button id="close-settings-btn" class="neon-button">Back</button>
+            </div>
+
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen hidden">
+            <h1 class="neon-title small">Shop</h1>
+            <p class="coins-display">Coins: <span id="shop-coins">0</span></p>
+            <div class="weapons-grid" id="weapons-grid">
+                <!-- Weapon items will be injected here via JS -->
+            </div>
+            <div class="shop-actions">
+                <button id="shop-exit-button" type="button" class="neon-button secondary" aria-label="Exit Shop">
+                    Exit Shop
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen hidden">
+            <h1 class="neon-title text-danger">Game Over</h1>
+            <div class="stats-container large">
+                <p>Final Score: <span id="go-score">0</span></p>
+                <p>Coins Earned: <span id="go-coins">0</span></p>
+            </div>
+            <button id="retry-btn" class="neon-button">Retry</button>
+            <button id="shop-btn-go" class="neon-button secondary">Shop</button>
+        </div>
+    </div>
+
+    <script type="module" src="/src/game.js"></script>
+</body>
+</html>
