@@ -573,7 +573,36 @@ function getTrailColor(trailName) {
     }
 }
 
+
+function getTargetForwardSpeed(targetType, wave) {
+    // Base speed for Wave 1 is ~2.6 to travel 50 units in ~19 seconds.
+    let baseSpeed = 2.6;
+
+    // Gradual progression
+    if (wave === 2) {
+        baseSpeed *= 1.05; // 5% faster
+    } else if (wave === 3) {
+        baseSpeed *= 1.10; // 10% faster
+    } else if (wave > 3) {
+        // Continue increasing slowly, capped at a reasonable max
+        baseSpeed = Math.min(8.0, baseSpeed * (1.10 + (wave - 3) * 0.05));
+    }
+
+    let multiplier = 1.0;
+    if (targetType === 'Wooden Crate') multiplier = 1.0;
+    else if (targetType === 'Crystal Block') multiplier = 1.05;
+    else if (targetType === 'Golden Crate') multiplier = 0.90;
+    else if (targetType === 'Stone Block') multiplier = 0.70;
+    else if (targetType === 'Target Dummy') multiplier = 0.65;
+    else if (targetType === 'BOSS') multiplier = 0.50; // Boss moves slowest
+
+    // For powerups (e.g. Red Target, Blue Target, Golden Crate) default to base speed or their specific type above
+
+    return baseSpeed * multiplier;
+}
+
 function spawnObject(zPos) {
+
     let objData;
     let isBoss = false;
     let isPowerup = false;
@@ -591,8 +620,7 @@ function spawnObject(zPos) {
         warning.classList.remove('hidden');
         setTimeout(() => warning.classList.add('hidden'), 2000);
 
-        // Increase base speed slightly every wave
-        run.speed = Math.min(80, 40 + (run.wave * 2));
+        // Speed is now calculated dynamically by getTargetForwardSpeed
         audioManager.fadeToMusic('boss');
         audioManager.playSound('boss_entrance');
 
@@ -644,6 +672,8 @@ function spawnObject(zPos) {
         data: objData,
         hp: objData.hp,
         maxHp: objData.hp,
+        spawnZ: zPos, // Record spawn position for measurement
+        spawnTime: performance.now(), // Record spawn time for measurement
         z: zPos,
         x: mesh.position.x,
         isBoss: isBoss,
@@ -688,7 +718,8 @@ function applyCameraShake(magnitude, time) {
 // --- MAIN LOOP ---
 
 function gameLoop() {
-    const delta = clock.getDelta();
+    // Cap delta time to 0.1 to avoid large jumps
+    const delta = Math.min(clock.getDelta(), 0.1);
 
 
     if (stateManager.getState() === STATES.PLAYING) {
@@ -850,8 +881,6 @@ function updateGameplay(delta) {
     }
 
     // Advance world (objects move towards player now, since we throw projectiles)
-    const currentSpeed = run.speed * run.speedMultiplier;
-
     // Spawn objects periodically instead of waiting for break
     if(activeObjects.length === 0 || activeObjects[activeObjects.length -1].z > -100) {
         const lastZ = activeObjects.length > 0 ? activeObjects[activeObjects.length - 1].z : -50;
@@ -861,11 +890,15 @@ function updateGameplay(delta) {
     // Move objects towards camera
     for (let i = activeObjects.length - 1; i >= 0; i--) {
         let obj = activeObjects[i];
-        obj.z += currentSpeed * delta;
+        const forwardSpeed = getTargetForwardSpeed(obj.data.name, run.wave) * run.speedMultiplier;
+        obj.z += forwardSpeed * delta;
         obj.mesh.position.z = obj.z;
 
         // If object passed player, remove it and penalize power
         if (obj.z > 10) {
+            const timeTaken = (performance.now() - obj.spawnTime) / 1000;
+            console.log(`[DEV LOG] Target: ${obj.data.name} | Wave: ${run.wave} | Spawn Z: ${obj.spawnZ.toFixed(2)} | End Z: ${obj.z.toFixed(2)} | Time: ${timeTaken.toFixed(2)}s`);
+
             if (!obj.isPowerup) {
                 run.power -= obj.hp * 0.2; // Lose power for missing
                 run.combo = 0; // Reset combo
@@ -889,7 +922,9 @@ function updateGameplay(delta) {
     weaponMesh.rotation.y += 0.5 * delta;
 
     // Extend Lane towards camera to simulate movement
-    lane.position.z += currentSpeed * delta;
+    // Use base speed of Wave 1 for visually consistent background movement
+    const visualLaneSpeed = getTargetForwardSpeed("Wooden Crate", 1) * run.speedMultiplier;
+    lane.position.z += visualLaneSpeed * delta;
     if (lane.position.z > 0) {
         lane.position.z -= 400;
     }
