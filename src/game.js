@@ -15,6 +15,7 @@ let activeObjects = [];
 let particles = [];
 let projectiles = [];
 let clock = new THREE.Clock();
+let holdToFireInterval = null;
 
 // Input / Aiming
 let aim = { x: 0, y: 0 }; // Normalized device coordinates (-1 to +1)
@@ -72,14 +73,17 @@ function bindEvents() {
 
     document.getElementById('shop-btn-start').addEventListener('click', (e) => {
         e.stopPropagation();
+        stopAutoFire();
         stateManager.openShop(STATES.START);
     });
     document.getElementById('shop-btn-go').addEventListener('click', (e) => {
         e.stopPropagation();
+        stopAutoFire();
         stateManager.openShop(STATES.GAMEOVER);
     });
     document.getElementById('shop-btn-pause').addEventListener('click', (e) => {
         e.stopPropagation();
+        stopAutoFire();
         stateManager.openShop(STATES.PAUSED);
     });
     document.getElementById('shop-exit-button').addEventListener('click', (e) => {
@@ -96,6 +100,7 @@ function bindEvents() {
     document.getElementById('cancel-restart-btn').addEventListener('click', resetPauseMenuUI);
 
     document.getElementById('do-restart-btn').addEventListener('click', () => {
+        stopAutoFire();
         safelyClearRun(scene, activeObjects, projectiles, particles);
         activeObjects = [];
         projectiles = [];
@@ -107,6 +112,7 @@ function bindEvents() {
     document.getElementById('cancel-quit-btn').addEventListener('click', resetPauseMenuUI);
     bindAudioSettingsUI();
     document.getElementById('do-quit-btn').addEventListener('click', () => {
+        stopAutoFire();
         safelyClearRun(scene, activeObjects, projectiles, particles);
         activeObjects = [];
         projectiles = [];
@@ -129,8 +135,11 @@ function bindEvents() {
 
     // Auto-pause when tab is hidden
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden && stateManager.getState() === STATES.PLAYING) {
-            stateManager.changeState(STATES.PAUSED);
+        if (document.hidden) {
+            stopAutoFire();
+            if (stateManager.getState() === STATES.PLAYING) {
+                stateManager.changeState(STATES.PAUSED);
+            }
         }
     });
 }
@@ -138,6 +147,7 @@ function bindEvents() {
 function togglePause() {
     if(stateManager.getState() === STATES.PLAYING) {
         audioManager.playSound('pause');
+        stopAutoFire();
         stateManager.changeState(STATES.PAUSED);
     } else if (stateManager.getState() === STATES.PAUSED) {
         audioManager.resumeMusic();
@@ -208,31 +218,59 @@ function bindAudioSettingsUI() {
 }
 
 
+function stopAutoFire() {
+    if (holdToFireInterval) {
+        clearInterval(holdToFireInterval);
+        holdToFireInterval = null;
+    }
+}
+
 function bindMobileControls() {
     const throwBtn = document.getElementById('mobile-throw-btn');
     if (throwBtn) {
-        let autofireInterval = null;
-
         throwBtn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
+            e.stopPropagation();
+
+            stopAutoFire();
+
+            if (stateManager.getState() !== STATES.PLAYING) return;
             throwProjectile();
-            autofireInterval = setInterval(throwProjectile, 150);
+
+            holdToFireInterval = setInterval(() => {
+                if (stateManager.getState() === STATES.PLAYING && !document.hidden) {
+                    throwProjectile();
+                } else {
+                    stopAutoFire();
+                }
+            }, 150);
+
+            throwBtn.setPointerCapture(e.pointerId);
         });
 
         throwBtn.addEventListener('pointerup', (e) => {
             e.preventDefault();
-            if (autofireInterval) {
-                clearInterval(autofireInterval);
-                autofireInterval = null;
-            }
+            e.stopPropagation();
+            stopAutoFire();
+            try { throwBtn.releasePointerCapture(e.pointerId); } catch(err) {}
         });
 
         throwBtn.addEventListener('pointercancel', (e) => {
             e.preventDefault();
-            if (autofireInterval) {
-                clearInterval(autofireInterval);
-                autofireInterval = null;
-            }
+            e.stopPropagation();
+            stopAutoFire();
+            try { throwBtn.releasePointerCapture(e.pointerId); } catch(err) {}
+        });
+
+        throwBtn.addEventListener('pointerleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stopAutoFire();
+            try { throwBtn.releasePointerCapture(e.pointerId); } catch(err) {}
+        });
+
+        throwBtn.addEventListener('lostpointercapture', (e) => {
+            stopAutoFire();
         });
     }
 
