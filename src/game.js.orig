@@ -950,8 +950,7 @@ Travel time: ${window.debugSpeedInfo.travelTime} seconds`;
 
     // Extend Lane towards camera to simulate movement
     // Use base speed of Wave 1 for visually consistent background movement
-    // Disable visualLaneSpeed updating the debugInfo since it overrides actual wave speed in debug view
-    const visualLaneSpeed = 0.48 * 5.416 * run.speedMultiplier;
+    const visualLaneSpeed = getTargetForwardSpeed("Wooden Crate", 1) * run.speedMultiplier;
     lane.position.z += visualLaneSpeed * delta;
     if (lane.position.z > 0) {
         lane.position.z -= 400;
