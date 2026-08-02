@@ -1,0 +1,6 @@
+--- src/game.js
++++ src/game.js
+@@ -25,2 +25,3 @@
+ let run = {};
++window.getRunRef = function() { return run; };
+ let playerData = {
