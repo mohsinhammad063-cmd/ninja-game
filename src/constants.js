@@ -7,7 +7,8 @@ export const WEAPONS = [
 ];
 
 export const MATERIALS = [
-    { name: 'Wooden Crate', hp: 30, color: 0x8b4513, score: 10, coins: 1, shape: 'box' },
+    { name: 'Normal Crate', hp: 30, color: 0x8b4513, score: 10, coins: 5, shape: 'box' },
+    { name: 'Golden Crate', hp: 35, color: 0xffd700, score: 25, coins: 25, shape: 'box', isGolden: true },
     { name: 'Barrel', hp: 60, color: 0x5c4033, score: 20, coins: 2, shape: 'cylinder' },
     { name: 'Stone Block', hp: 150, color: 0x888888, score: 40, coins: 5, shape: 'box' },
     { name: 'Target Dummy', hp: 300, color: 0xddaa77, score: 80, coins: 10, shape: 'cylinder' },
@@ -16,7 +17,6 @@ export const MATERIALS = [
 ];
 
 export const POWERUPS = [
-    { type: 'coin', name: 'Golden Crate', color: 0xffd700, shape: 'box' },
     { type: 'damage', name: 'Red Target', color: 0xff0000, shape: 'cylinder' },
     { type: 'slow', name: 'Blue Target', color: 0x0000ff, shape: 'cylinder' }
 ];
