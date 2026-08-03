@@ -9,7 +9,8 @@ export function createRun(weaponData) {
         distanceTraveled: 0,
         objectsBroken: 0,
         speed: 40,
-        wave: 1,
+        wave: 0, // Starts at 0, first transition makes it 1
+        waveTransitionTimer: 0,
         combo: 0,
         comboTimer: 0,
         damageMultiplier: 1,

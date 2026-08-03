@@ -24,6 +24,7 @@ let isDragging = false;
 // Game State
 let run = {};
 window.getRunRef = function() { return run; };
+window.getActiveObjects = function() { return activeObjects; };
 let playerData = {
     coins: 0,
     bestScore: 0,
@@ -494,10 +495,8 @@ function startGame() {
     activeObjects.forEach(obj => scene.remove(obj.mesh));
     activeObjects = [];
 
-    // Spawn initial objects
-    for(let i=0; i<3; i++) {
-        spawnObject(-40 - (i * 20));
-    }
+    // The first updateGameplay tick will see activeObjects is empty
+    // and correctly increment run.wave to 1 and spawn the first wave.
 }
 
 function gameOver() {
@@ -581,10 +580,10 @@ function getTargetForwardSpeed(targetType, wave) {
     const waveSpeed = Math.min(1.45, baseSpeed + ((wave - 1) * waveIncrease));
 
     let multiplier = 1.0;
-    if (targetType === 'Wooden Crate') multiplier = 1.00;
+    if (targetType === 'Normal Crate') multiplier = 1.00;
     else if (targetType === 'Barrel') multiplier = 0.95;
     else if (targetType === 'Crystal Block') multiplier = 1.10;
-    else if (targetType === 'Golden Crate') multiplier = 1.15;
+    else if (targetType === 'Golden Crate') multiplier = 1.05;
     else if (targetType === 'Moving target' || targetType === 'Target Dummy') multiplier = 1.05;
     else if (targetType === 'Flying target') multiplier = 1.10;
     else if (targetType === 'Stone Block') multiplier = 0.75;
@@ -616,40 +615,62 @@ function getTargetForwardSpeed(targetType, wave) {
     return engineSpeed;
 }
 
-function spawnObject(zPos) {
+function spawnWave() {
+    // Determine exact target composition
+    const targets = [];
+    const normalCrateData = MATERIALS.find(m => m.name === 'Normal Crate');
+    const goldenCrateData = MATERIALS.find(m => m.name === 'Golden Crate');
+    const bossData = MATERIALS.find(m => m.name === 'BOSS');
 
-    let objData;
-    let isBoss = false;
-    let isPowerup = false;
+    // Add 5 Normal Crates and 2 Golden Crates
+    for (let i = 0; i < 5; i++) {
+        targets.push(normalCrateData);
+    }
+    for (let i = 0; i < 2; i++) {
+        targets.push(goldenCrateData);
+    }
 
-    // Check for Boss Wave
-    if (run.objectsBroken > 0 && run.objectsBroken % 15 === 0) {
-        // Every 15 objects is a "Wave", spawn Boss
-        objData = MATERIALS.find(m => m.name === 'BOSS');
-        isBoss = true;
-        run.wave++;
-        document.getElementById('ui-wave').innerText = run.wave;
+    // Shuffle targets to randomize positions
+    for (let i = targets.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [targets[i], targets[j]] = [targets[j], targets[i]];
+    }
 
+    // Check for boss wave (every 5th wave)
+    let isBossWave = false;
+    if (run.wave > 0 && run.wave % 5 === 0) {
+        isBossWave = true;
         // Show boss warning
         const warning = document.getElementById('boss-warning');
         warning.classList.remove('hidden');
         setTimeout(() => warning.classList.add('hidden'), 2000);
 
-        // Speed is now calculated dynamically by getTargetForwardSpeed
         audioManager.fadeToMusic('boss');
         audioManager.playSound('boss_entrance');
 
-    } else if (Math.random() < 0.1) {
-        // 10% chance for powerup
-        isPowerup = true;
-        objData = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
-    } else {
-        // Random normal material (excluding boss)
-        const normalMats = MATERIALS.filter(m => m.name !== 'BOSS');
-        // Weight selection based on wave (later waves = harder mats)
-        const maxMatIndex = Math.min(normalMats.length - 1, Math.floor(run.wave / 2));
-        objData = normalMats[Math.floor(Math.random() * (maxMatIndex + 1))];
+        // Append boss at the very end of the wave
+        targets.push(bossData);
     }
+
+    // Maybe push a powerup
+    if (Math.random() < 0.1 && POWERUPS.length > 0) {
+        const powerupData = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+        // Insert it randomly among crates
+        const insertIdx = Math.floor(Math.random() * 7);
+        targets.splice(insertIdx, 0, powerupData);
+    }
+
+    // Spawn them spaced out
+    let currentZ = -40;
+    for (let i = 0; i < targets.length; i++) {
+        spawnSpecificObject(currentZ, targets[i]);
+        currentZ -= (30 + Math.random() * 20); // Spacing between objects
+    }
+}
+
+function spawnSpecificObject(zPos, objData) {
+    let isBoss = (objData.name === 'BOSS');
+    let isPowerup = (objData.type !== undefined); // Powerups have 'type'
 
     let geometry;
     switch(objData.shape) {
@@ -663,12 +684,15 @@ function spawnObject(zPos) {
     const material = new THREE.MeshStandardMaterial({
         color: objData.color,
         roughness: 0.7,
-        metalness: 0.1
+        metalness: objData.isGolden ? 0.8 : 0.1
     });
 
     if(isBoss) {
         material.emissive = new THREE.Color(0x330000);
         material.emissiveIntensity = 0.5;
+    } else if (objData.isGolden) {
+        material.emissive = new THREE.Color(0xaa8800);
+        material.emissiveIntensity = 0.4;
     }
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -685,14 +709,15 @@ function spawnObject(zPos) {
     activeObjects.push({
         mesh: mesh,
         data: objData,
-        hp: objData.hp,
-        maxHp: objData.hp,
+        hp: objData.hp || 1, // fallback for powerups
+        maxHp: objData.hp || 1,
         spawnZ: zPos, // Record spawn position for measurement
         spawnTime: performance.now(), // Record spawn time for measurement
         z: zPos,
         x: mesh.position.x,
         isBoss: isBoss,
-        isPowerup: isPowerup
+        isPowerup: isPowerup,
+        rewarded: false // Flag to prevent duplicate rewards
     });
 }
 
@@ -841,8 +866,15 @@ Travel time: ${window.debugSpeedInfo.travelTime} seconds`;
                 }
 
                 // Check Destroy
-                if (target.hp <= 0) {
-                    playSound('break_wood');
+                if (target.hp <= 0 && !target.rewarded) {
+                    target.rewarded = true; // Prevent duplicate awards
+
+                    if (target.data.isGolden) {
+                        playSound('buy'); // Distinct sound for golden crate
+                    } else {
+                        playSound('break_wood');
+                    }
+
                     createBreakParticles(target.mesh.position, target.data.color);
                     applyCameraShake(target.isBoss ? 1.0 : 0.4, 0.2);
 
@@ -858,7 +890,9 @@ Travel time: ${window.debugSpeedInfo.travelTime} seconds`;
 
                     const comboMult = Math.max(1, run.combo);
                     const scoreGained = (target.data.score || 0) * comboMult;
-                    const coinsGained = target.data.coins || 0;
+
+                    // Base coins with multiplier (defaulting to 1 if no general multiplier exists)
+                    const coinsGained = Math.round((target.data.coins || 0) * (run.coinMultiplier || 1));
 
                     run.score += scoreGained;
                     run.coins += coinsGained;
@@ -866,8 +900,12 @@ Travel time: ${window.debugSpeedInfo.travelTime} seconds`;
 
                     if (scoreGained > 0) showFloatingText(`+${scoreGained}`, 'score');
                     if (coinsGained > 0) {
-                        setTimeout(() => showFloatingText(`+${coinsGained} Coins`, 'coin'), 200);
-                        if(coinsGained > 1) playSound('coin');
+                        if (target.data.isGolden) {
+                            setTimeout(() => showFloatingText(`+${coinsGained} Coins`, 'coin'), 200);
+                        } else {
+                            setTimeout(() => showFloatingText(`+${coinsGained} Coins`, 'coin'), 200);
+                            if(coinsGained > 1) playSound('coin');
+                        }
                     }
 
                     document.getElementById('ui-score').innerText = run.score;
@@ -907,11 +945,19 @@ Travel time: ${window.debugSpeedInfo.travelTime} seconds`;
         }
     }
 
-    // Advance world (objects move towards player now, since we throw projectiles)
-    // Spawn objects periodically instead of waiting for break
-    if(activeObjects.length === 0 || activeObjects[activeObjects.length -1].z > -100) {
-        const lastZ = activeObjects.length > 0 ? activeObjects[activeObjects.length - 1].z : -50;
-        spawnObject(lastZ - (40 + Math.random() * 20));
+    // Check if the current wave is fully cleared
+    if(activeObjects.length === 0) {
+        if (!run.waveTransitionTimer) {
+            run.waveTransitionTimer = 1.0; // 1 second delay before next wave
+        }
+
+        run.waveTransitionTimer -= delta;
+        if (run.waveTransitionTimer <= 0) {
+            run.wave++;
+            document.getElementById('ui-wave').innerText = run.wave;
+            spawnWave();
+            run.waveTransitionTimer = null;
+        }
     }
 
     // Move objects towards camera
